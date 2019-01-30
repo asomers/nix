@@ -591,7 +591,7 @@ impl ControlMessageOwned {
                 let n = len / mem::size_of::<RawFd>();
                 let mut fds = Vec::with_capacity(n);
                 for i in 0..n {
-                    let fdp = (p as *const RawFd).add(i);
+                    let fdp = (p as *const RawFd).offset(i as isize);
                     fds.push(ptr::read_unaligned(fdp));
                 }
                 let cmo = ControlMessageOwned::ScmRights(fds);
