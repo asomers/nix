@@ -712,12 +712,12 @@ impl<'a> ControlMessage<'a> {
 
     /// The value of CMSG_LEN on this message.
     /// Safe because CMSG_LEN is always safe
-    #[cfg(all(target_os = "linux", not(target_nev = "musl")))]
+    #[cfg(all(target_os = "linux", not(target_env = "musl")))]
     fn cmsg_len(&self) -> usize {
         unsafe{CMSG_LEN(self.len() as libc::c_uint) as usize}
     }
 
-    #[cfg(any(not(target_os = "linux"), target_nev = "musl"))]
+    #[cfg(any(not(target_os = "linux"), target_env = "musl"))]
     fn cmsg_len(&self) -> libc::c_uint {
         unsafe{CMSG_LEN(self.len() as libc::c_uint)}
     }
@@ -822,6 +822,7 @@ pub fn sendmsg(fd: RawFd, iov: &[IoVec<&[u8]>], cmsgs: &[ControlMessage],
         msg_control:  cmsg_ptr,
         msg_controllen:  capacity as _,
         msg_flags:  0,
+        .. unsafe{mem::zeroed()}    // Needed on musl
     };
 
     // Encode each cmsg.  This must happen after initializing the header because
