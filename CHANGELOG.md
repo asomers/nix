@@ -8,7 +8,25 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 - Add IP_RECVIF & IP_RECVDSTADDR. Enable IP_PKTINFO and IP6_PKTINFO on netbsd/openbsd.
   ([#1002](https://github.com/nix-rust/nix/pull/1002))
 ### Changed
+- `recvmsg` now returns an Iterator over `ControlMessageOwned` objects rather
+  than `ControlMessage` objects.  This is sadly not backwards-compatible.  Fix
+  code like this:
+  ```rust
+  if let ControlMessage::ScmRights(&fds) = cmsg {
+  ```
+    
+  By replacing it with code like this:
+  ```rust
+  if let ControlMessageOwned::ScmRights(fds) = cmsg {
+  ```
+  ([#1020](https://github.com/nix-rust/nix/pull/1020))
+- Replaced `CmsgSpace` with the `cmsg_space` macro.
+  ([#1020](https://github.com/nix-rust/nix/pull/1020))
+
 ### Fixed
+- Fixed multiple bugs when using `sendmsg` and `recvmsg` with ancillary control messages
+  ([#1020](https://github.com/nix-rust/nix/pull/1020))
+
 ### Removed
 
 ## [0.13.0] - 2019-01-15
