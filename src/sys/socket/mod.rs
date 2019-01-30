@@ -333,6 +333,7 @@ pub trait CmsgBuffer {
 /// # #[macro_use] extern crate nix;
 /// # use nix::sys::time::TimeVal;
 /// # use std::os::unix::io::RawFd;
+/// # fn main() {
 /// // Create a buffer for a `ControlMessageOwned::ScmTimestamp` message
 /// let _ = cmsg_space!(TimeVal);
 /// // Create a buffer big enough for a `ControlMessageOwned::ScmRights` message
@@ -341,6 +342,7 @@ pub trait CmsgBuffer {
 /// // Create a buffer big enough for a `ControlMessageOwned::ScmRights` message
 /// // and a `ControlMessageOwned::ScmTimestamp` message
 /// let _ = cmsg_space!(RawFd, TimeVal);
+/// # }
 /// ```
 // Unfortunately, CMSG_SPACE isn't a const_fn, or else we could return a
 // stack-allocated array.
@@ -495,6 +497,7 @@ pub enum ControlMessageOwned {
     /// # use nix::sys::uio::IoVec;
     /// # use nix::sys::time::*;
     /// # use std::time::*;
+    /// # fn main() {
     /// // Set up
     /// let message = "Ohayō!".as_bytes();
     /// let in_socket = socket(
@@ -533,6 +536,7 @@ pub enum ControlMessageOwned {
     /// assert!(rduration <= time1.duration_since(UNIX_EPOCH).unwrap());
     /// // Close socket
     /// nix::unistd::close(in_socket).unwrap();
+    /// # }
     /// ```
     ScmTimestamp(TimeVal),
     #[cfg(any(
