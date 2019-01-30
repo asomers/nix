@@ -720,12 +720,12 @@ impl<'a> ControlMessage<'a> {
     /// Return a reference to the payload data as a byte pointer
     fn data(&self) -> *const u8 {
         match self {
-            ControlMessage::ScmRights(fds) => {
-                *fds as *const _ as *const u8
+            &ControlMessage::ScmRights(fds) => {
+                fds as *const [RawFd] as *const u8
             },
             #[cfg(any(target_os = "android", target_os = "linux"))]
-            ControlMessage::ScmCredentials(creds) => {
-                *creds as *const libc::ucred as *const u8
+            &ControlMessage::ScmCredentials(creds) => {
+                creds as *const libc::ucred as *const u8
             }
         }
     }
@@ -733,12 +733,12 @@ impl<'a> ControlMessage<'a> {
     /// The size of the payload, excluding its cmsghdr
     fn len(&self) -> usize {
         match self {
-            ControlMessage::ScmRights(fds) => {
-                mem::size_of_val(*fds)
+            &ControlMessage::ScmRights(fds) => {
+                mem::size_of_val(fds)
             },
             #[cfg(any(target_os = "android", target_os = "linux"))]
-            ControlMessage::ScmCredentials(creds) => {
-                mem::size_of_val(*creds)
+            &ControlMessage::ScmCredentials(creds) => {
+                mem::size_of_val(creds)
             }
         }
     }
@@ -746,18 +746,18 @@ impl<'a> ControlMessage<'a> {
     /// Returns the value to put into the `cmsg_level` field of the header.
     fn cmsg_level(&self) -> libc::c_int {
         match self {
-            ControlMessage::ScmRights(_) => libc::SOL_SOCKET,
+            &ControlMessage::ScmRights(_) => libc::SOL_SOCKET,
             #[cfg(any(target_os = "android", target_os = "linux"))]
-            ControlMessage::ScmCredentials(_) => libc::SOL_SOCKET,
+            &ControlMessage::ScmCredentials(_) => libc::SOL_SOCKET,
         }
     }
 
     /// Returns the value to put into the `cmsg_type` field of the header.
     fn cmsg_type(&self) -> libc::c_int {
         match self {
-            ControlMessage::ScmRights(_) => libc::SCM_RIGHTS,
+            &ControlMessage::ScmRights(_) => libc::SCM_RIGHTS,
             #[cfg(any(target_os = "android", target_os = "linux"))]
-            ControlMessage::ScmCredentials(_) => libc::SCM_CREDENTIALS,
+            &ControlMessage::ScmCredentials(_) => libc::SCM_CREDENTIALS,
         }
     }
 
