@@ -6,7 +6,6 @@ use errno::Errno;
 use libc::{self, c_void, c_int, iovec, socklen_t, size_t,
         CMSG_FIRSTHDR, CMSG_NXTHDR, CMSG_DATA, CMSG_LEN};
 use std::{fmt, mem, ptr, slice};
-use std::marker::PhantomData;
 use std::os::unix::io::RawFd;
 use sys::time::TimeVal;
 use sys::uio::IoVec;
@@ -416,11 +415,10 @@ impl CmsgBuffer for Vec<u8> {
 
 #[allow(missing_debug_implementations)] // msghdr isn't Debug
 pub struct RecvMsg<'a> {
-    cmsghdr: *const cmsghdr,
+    cmsghdr: Option<&'a cmsghdr>,
     pub address: Option<SockAddr>,
     pub flags: MsgFlags,
     mhdr: msghdr,
-    phantom: PhantomData<&'a cmsghdr>
 }
 
 impl<'a> RecvMsg<'a> {
@@ -437,7 +435,7 @@ impl<'a> RecvMsg<'a> {
 #[allow(missing_debug_implementations)] // msghdr isn't Debug
 pub struct CmsgIterator<'a> {
     /// Control message buffer to decode from. Must adhere to cmsg alignment.
-    cmsghdr: *const cmsghdr,
+    cmsghdr: Option<&'a cmsghdr>,
     mhdr: &'a msghdr
 }
 
@@ -445,19 +443,21 @@ impl<'a> Iterator for CmsgIterator<'a> {
     type Item = ControlMessageOwned;
 
     fn next(&mut self) -> Option<ControlMessageOwned> {
-        if self.cmsghdr.is_null() {
-            // No more messages
-            return None;
+        match self.cmsghdr {
+            None => None,   // No more messages
+            Some(hdr) => {
+                // Get the data.
+                // Safe if cmsghdr points to valid data returned by recvmsg(2)
+                let cm = unsafe { Some(ControlMessageOwned::decode_from(hdr))};
+                // Advance the internal pointer.  Safe if mhdr and cmsghdr point
+                // to valid data returned by recvmsg(2)
+                self.cmsghdr = unsafe {
+                    let p = CMSG_NXTHDR(self.mhdr as *const _, hdr as *const _);
+                    p.as_ref()
+                };
+                cm
+            }
         }
-        // Get the data.
-        // Safe if cmsghdr points to valid data returned by recvmsg(2)
-        let cm = unsafe { Some(ControlMessageOwned::decode_from(self.cmsghdr))};
-        // Advance the internal pointer
-        // Safe if mhdr and cmsghdr point to valid data returned by recvmsg(2)
-        self.cmsghdr = unsafe{
-            CMSG_NXTHDR(self.mhdr as *const _, self.cmsghdr as *const _)
-        };
-        cm
     }
 }
 
@@ -585,11 +585,12 @@ impl ControlMessageOwned {
     ///
     /// Returns `None` if the data may be unaligned.  In that case use
     /// `ControlMessageOwned::decode_from`.
-    unsafe fn decode_from(header: *const cmsghdr)
+    unsafe fn decode_from(header: &cmsghdr)
         -> ControlMessageOwned
     {
         let p = CMSG_DATA(header);
-        let len = header as usize + (*header).cmsg_len as usize - p as usize;
+        let len = header as *const _ as usize + header.cmsg_len as usize
+            - p as usize;
         match ((*header).cmsg_level, (*header).cmsg_type) {
             (libc::SOL_SOCKET, libc::SCM_RIGHTS) => {
                 let n = len / mem::size_of::<RawFd>();
@@ -872,24 +873,25 @@ pub fn recvmsg<'a>(fd: RawFd, iov: &[IoVec<&mut [u8]>],
     let ret = unsafe { libc::recvmsg(fd, &mut mhdr, flags.bits()) };
 
     Errno::result(ret).map(|_| {
-        let pcmsghdr = if mhdr.msg_controllen > 0 {
-            // got control message(s)
-            debug_assert!(!mhdr.msg_control.is_null());
-            debug_assert!(msg_controllen >= mhdr.msg_controllen as usize);
-            unsafe{CMSG_FIRSTHDR(&mhdr as *const msghdr)}
-        } else {
-            ptr::null()
+        let cmsghdr = unsafe {
+            if mhdr.msg_controllen > 0 {
+                // got control message(s)
+                debug_assert!(!mhdr.msg_control.is_null());
+                debug_assert!(msg_controllen >= mhdr.msg_controllen as usize);
+                CMSG_FIRSTHDR(&mhdr as *const msghdr)
+            } else {
+                ptr::null()
+            }.as_ref()
         };
 
         let address = unsafe {
             sockaddr_storage_to_addr(&address, mhdr.msg_namelen as usize).ok()
         };
         RecvMsg {
-            cmsghdr: pcmsghdr,
+            cmsghdr,
             address,
             flags: MsgFlags::from_bits_truncate(mhdr.msg_flags),
             mhdr,
-            phantom: PhantomData
         }
     })
 }
