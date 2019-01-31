@@ -132,6 +132,9 @@ pub fn test_recvmsg_ebadf() {
     assert_eq!(r.err().unwrap(), Error::Sys(Errno::EBADF));
 }
 
+// Disable the test on emulated platforms due to a bug in QEMU versions <
+// 2.12.0.  https://bugs.launchpad.net/qemu/+bug/1701808
+#[cfg_attr(not(any(target_arch = "x86_64", target_arch="i686")), ignore)]
 #[test]
 pub fn test_scm_rights() {
     use nix::sys::uio::IoVec;
@@ -184,6 +187,9 @@ pub fn test_scm_rights() {
 }
 
 /// Tests that passing multiple fds using a single `ControlMessage` works.
+// Disable the test on emulated platforms due to a bug in QEMU versions <
+// 2.12.0.  https://bugs.launchpad.net/qemu/+bug/1701808
+#[cfg_attr(not(any(target_arch = "x86_64", target_arch="i686")), ignore)]
 #[test]
 fn test_scm_rights_single_cmsg_multiple_fds() {
     use std::os::unix::net::UnixDatagram;
