@@ -632,7 +632,7 @@ pub fn test_recvif() {
     use nix::sys::socket::sockopt::{Ipv4RecvIf, Ipv4RecvDstAddr};
     use nix::sys::socket::{bind, SockFlag, SockType};
     use nix::sys::socket::{getsockname, setsockopt, socket, SockAddr};
-    use nix::sys::socket::{recvmsg, sendmsg, ControlMessage, MsgFlags};
+    use nix::sys::socket::{recvmsg, sendmsg, ControlMessageOwned, MsgFlags};
     use nix::sys::uio::IoVec;
 
     let lo_ifaddr = loopback_address(AddressFamily::Inet);
