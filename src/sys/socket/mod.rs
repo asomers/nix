@@ -814,17 +814,20 @@ pub fn sendmsg(fd: RawFd, iov: &[IoVec<&[u8]>], cmsgs: &[ControlMessage],
         ptr::null_mut()
     };
 
-    let mhdr = msghdr {
-        msg_name:  name as *mut _,
-        msg_namelen:  namelen,
+    let mhdr = {
+        // Musl's msghdr has private fields, so this is the only way to
+        // initialize it.
+        let mut mhdr: msghdr = unsafe{mem::uninitialized()};
+        mhdr.msg_name = name as *mut _;
+        mhdr.msg_namelen = namelen;
         // transmute iov into a mutable pointer.  sendmsg doesn't really mutate
         // the buffer, but the standard says that it takes a mutable pointer
-        msg_iov:  iov.as_ptr() as *mut _,
-        msg_iovlen:  iov.len() as _,
-        msg_control:  cmsg_ptr,
-        msg_controllen:  capacity as _,
-        msg_flags:  0,
-        .. unsafe{mem::zeroed()}    // Needed on musl
+        mhdr.msg_iov = iov.as_ptr() as *mut _;
+        mhdr.msg_iovlen = iov.len() as _;
+        mhdr.msg_control = cmsg_ptr;
+        mhdr.msg_controllen = capacity as _;
+        mhdr.msg_flags = 0;
+        mhdr
     };
 
     // Encode each cmsg.  This must happen after initializing the header because
