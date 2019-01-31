@@ -871,6 +871,7 @@ pub fn recvmsg<'a>(fd: RawFd, iov: &[IoVec<&mut [u8]>],
         msg_control:  msg_control as *mut c_void,
         msg_controllen:  msg_controllen as _,
         msg_flags:  0,
+        .. unsafe { mem::zeroed() } // Needed for musl's pad fields
     };
 
     let ret = unsafe { libc::recvmsg(fd, &mut mhdr, flags.bits()) };
