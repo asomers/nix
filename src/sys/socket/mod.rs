@@ -866,15 +866,18 @@ pub fn recvmsg<'a>(fd: RawFd, iov: &[IoVec<&mut [u8]>],
         },
         None => (ptr::null_mut(), 0),
     };
-    let mut mhdr = msghdr {
-        msg_name:  &mut address as *mut sockaddr_storage as *mut c_void,
-        msg_namelen:  mem::size_of::<sockaddr_storage>() as socklen_t,
-        msg_iov:  iov.as_ptr() as *mut iovec,
-        msg_iovlen:  iov.len() as _,
-        msg_control:  msg_control as *mut c_void,
-        msg_controllen:  msg_controllen as _,
-        msg_flags:  0,
-        .. unsafe { mem::zeroed() } // Needed for musl's pad fields
+    let mut mhdr = {
+        // Musl's msghdr has private fields, so this is the only way to
+        // initialize it.
+        let mut mhdr: msghdr = unsafe{mem::uninitialized()};
+        mhdr.msg_name = &mut address as *mut sockaddr_storage as *mut c_void;
+        mhdr.msg_namelen = mem::size_of::<sockaddr_storage>() as socklen_t;
+        mhdr.msg_iov = iov.as_ptr() as *mut iovec;
+        mhdr.msg_iovlen = iov.len() as _;
+        mhdr.msg_control = msg_control as *mut c_void;
+        mhdr.msg_controllen = msg_controllen as _;
+        mhdr.msg_flags = 0;
+        mhdr
     };
 
     let ret = unsafe { libc::recvmsg(fd, &mut mhdr, flags.bits()) };
