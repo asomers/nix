@@ -548,10 +548,13 @@ pub enum ControlMessageOwned {
     Ipv4PacketInfo(libc::in_pktinfo),
     #[cfg(any(
         target_os = "android",
+        target_os = "dragonfly",
         target_os = "freebsd",
         target_os = "ios",
         target_os = "linux",
-        target_os = "macos"
+        target_os = "macos",
+        target_os = "openbsd",
+        target_os = "netbsd",
     ))]
     Ipv6PacketInfo(libc::in6_pktinfo),
     #[cfg(any(
