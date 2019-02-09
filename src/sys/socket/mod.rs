@@ -7,11 +7,14 @@ use libc::{self, c_void, c_int, iovec, socklen_t, size_t,
         CMSG_FIRSTHDR, CMSG_NXTHDR, CMSG_DATA, CMSG_LEN};
 use std::{fmt, mem, ptr, slice};
 use std::os::unix::io::RawFd;
+use std::marker::PhantomData;
 use sys::time::TimeVal;
 use sys::uio::IoVec;
+use sys::socket::cmsg::*;
 
 mod addr;
 pub mod sockopt;
+pub mod cmsg;
 
 /*
  *
@@ -427,7 +430,7 @@ impl<'a> RecvMsg<'a> {
     pub fn cmsgs(&self) -> CmsgIterator {
         CmsgIterator {
             cmsghdr: self.cmsghdr,
-            mhdr: &self.mhdr
+            mhdr: &self.mhdr,
         }
     }
 }
@@ -439,27 +442,40 @@ pub struct CmsgIterator<'a> {
     mhdr: &'a msghdr
 }
 
-impl<'a> Iterator for CmsgIterator<'a> {
-    type Item = ControlMessageOwned;
+#[allow(missing_debug_implementations)] // msghdr isn't Debug
+pub struct TypedCmsgIterator<'a, T>(CmsgIterator<'a>, PhantomData<T>);
 
-    fn next(&mut self) -> Option<ControlMessageOwned> {
-        match self.cmsghdr {
-            None => None,   // No more messages
-            Some(hdr) => {
-                // Get the data.
-                // Safe if cmsghdr points to valid data returned by recvmsg(2)
-                let cm = unsafe { Some(ControlMessageOwned::decode_from(hdr))};
-                // Advance the internal pointer.  Safe if mhdr and cmsghdr point
-                // to valid data returned by recvmsg(2)
-                self.cmsghdr = unsafe {
-                    let p = CMSG_NXTHDR(self.mhdr as *const _, hdr as *const _);
-                    p.as_ref()
-                };
-                cm
-            }
+impl<'a> CmsgIterator<'a> {
+    pub fn next<T: ControlMessage>(&mut self) -> Option<T> {
+        unsafe {
+            let hdr = self.cmsghdr?;
+            let p = CMSG_DATA(hdr);
+            let len = hdr as *const _ as usize + hdr.cmsg_len as usize
+                - p as usize;
+
+            let cm = T::decode(hdr, slice::from_raw_parts(p, len));
+
+            self.cmsghdr = {
+                let p = CMSG_NXTHDR(self.mhdr as *const _, hdr as *const _);
+                p.as_ref()
+            };
+            cm
         }
     }
+
+    pub fn typed<T: ControlMessage>(self) -> TypedCmsgIterator<'a, T> {
+        TypedCmsgIterator(self, PhantomData)
+    }
 }
+
+impl<'a, T: ControlMessage> Iterator for TypedCmsgIterator<'a, T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        self.0.next::<T>()
+    }
+}
+
 
 /// A type-safe wrapper around a single control message, as used with
 /// [`recvmsg`](#fn.recvmsg).
@@ -471,308 +487,11 @@ impl<'a> Iterator for CmsgIterator<'a> {
 //  alignment issues.
 //
 //  See https://github.com/nix-rust/nix/issues/999
-#[allow(missing_debug_implementations)]
-pub enum ControlMessageOwned {
-    /// Received version of
-    /// [`ControlMessage::ScmRights`][#enum.ControlMessage.html#variant.ScmRights]
-    ScmRights(Vec<RawFd>),
-    /// Received version of
-    /// [`ControlMessage::ScmCredentials`][#enum.ControlMessage.html#variant.ScmCredentials]
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    ScmCredentials(libc::ucred),
-    /// A message of type `SCM_TIMESTAMP`, containing the time the
-    /// packet was received by the kernel.
-    ///
-    /// See the kernel's explanation in "SO_TIMESTAMP" of
-    /// [networking/timestamping](https://www.kernel.org/doc/Documentation/networking/timestamping.txt).
-    ///
-    /// # Examples
-    ///
-    // Disable this test on FreeBSD i386
-    // https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=222039
-    #[cfg_attr(not(all(target_os = "freebsd", target_arch = "x86")), doc = " ```")]
-    #[cfg_attr(all(target_os = "freebsd", target_arch = "x86"), doc = " ```no_run")]
-    /// # #[macro_use] extern crate nix;
-    /// # use nix::sys::socket::*;
-    /// # use nix::sys::uio::IoVec;
-    /// # use nix::sys::time::*;
-    /// # use std::time::*;
-    /// # fn main() {
-    /// // Set up
-    /// let message = "Ohayō!".as_bytes();
-    /// let in_socket = socket(
-    ///     AddressFamily::Inet,
-    ///     SockType::Datagram,
-    ///     SockFlag::empty(),
-    ///     None).unwrap();
-    /// setsockopt(in_socket, sockopt::ReceiveTimestamp, &true).unwrap();
-    /// let localhost = InetAddr::new(IpAddr::new_v4(127, 0, 0, 1), 0);
-    /// bind(in_socket, &SockAddr::new_inet(localhost)).unwrap();
-    /// let address = getsockname(in_socket).unwrap();
-    /// // Get initial time
-    /// let time0 = SystemTime::now();
-    /// // Send the message
-    /// let iov = [IoVec::from_slice(message)];
-    /// let flags = MsgFlags::empty();
-    /// let l = sendmsg(in_socket, &iov, &[], flags, Some(&address)).unwrap();
-    /// assert_eq!(message.len(), l);
-    /// // Receive the message
-    /// let mut buffer = vec![0u8; message.len()];
-    /// let mut cmsgspace = cmsg_space!(TimeVal);
-    /// let iov = [IoVec::from_mut_slice(&mut buffer)];
-    /// let r = recvmsg(in_socket, &iov, Some(&mut cmsgspace), flags).unwrap();
-    /// let rtime = match r.cmsgs().next() {
-    ///     Some(ControlMessageOwned::ScmTimestamp(rtime)) => rtime,
-    ///     Some(_) => panic!("Unexpected control message"),
-    ///     None => panic!("No control message")
-    /// };
-    /// // Check the final time
-    /// let time1 = SystemTime::now();
-    /// // the packet's received timestamp should lie in-between the two system
-    /// // times, unless the system clock was adjusted in the meantime.
-    /// let rduration = Duration::new(rtime.tv_sec() as u64,
-    ///                               rtime.tv_usec() as u32 * 1000);
-    /// assert!(time0.duration_since(UNIX_EPOCH).unwrap() <= rduration);
-    /// assert!(rduration <= time1.duration_since(UNIX_EPOCH).unwrap());
-    /// // Close socket
-    /// nix::unistd::close(in_socket).unwrap();
-    /// # }
-    /// ```
-    ScmTimestamp(TimeVal),
-    #[cfg(any(
-        target_os = "android",
-        target_os = "ios",
-        target_os = "linux",
-        target_os = "macos"
-    ))]
-    Ipv4PacketInfo(libc::in_pktinfo),
-    #[cfg(any(
-        target_os = "android",
-        target_os = "dragonfly",
-        target_os = "freebsd",
-        target_os = "ios",
-        target_os = "linux",
-        target_os = "macos",
-        target_os = "openbsd",
-        target_os = "netbsd",
-    ))]
-    Ipv6PacketInfo(libc::in6_pktinfo),
-    #[cfg(any(
-        target_os = "freebsd",
-        target_os = "ios",
-        target_os = "macos",
-        target_os = "netbsd",
-        target_os = "openbsd",
-    ))]
-    Ipv4RecvIf(libc::sockaddr_dl),
-    #[cfg(any(
-        target_os = "freebsd",
-        target_os = "ios",
-        target_os = "macos",
-        target_os = "netbsd",
-        target_os = "openbsd",
-    ))]
-    Ipv4RecvDstAddr(libc::in_addr),
-    /// Catch-all variant for unimplemented cmsg types.
-    #[doc(hidden)]
-    Unknown(UnknownCmsg),
+pub trait ControlMessage: Sized {
+    fn decode(header: &cmsghdr, buf: &[u8]) -> Option<Self>;
 }
 
-impl ControlMessageOwned {
-    /// Decodes a `ControlMessageOwned` from raw bytes.
-    ///
-    /// This is only safe to call if the data is correct for the message type
-    /// specified in the header. Normally, the kernel ensures that this is the
-    /// case. "Correct" in this case includes correct length, alignment and
-    /// actual content.
-    ///
-    /// Returns `None` if the data may be unaligned.  In that case use
-    /// `ControlMessageOwned::decode_from`.
-    unsafe fn decode_from(header: &cmsghdr)
-        -> ControlMessageOwned
-    {
-        let p = CMSG_DATA(header);
-        let len = header as *const _ as usize + header.cmsg_len as usize
-            - p as usize;
-        match ((*header).cmsg_level, (*header).cmsg_type) {
-            (libc::SOL_SOCKET, libc::SCM_RIGHTS) => {
-                let n = len / mem::size_of::<RawFd>();
-                let mut fds = Vec::with_capacity(n);
-                for i in 0..n {
-                    let fdp = (p as *const RawFd).offset(i as isize);
-                    fds.push(ptr::read_unaligned(fdp));
-                }
-                let cmo = ControlMessageOwned::ScmRights(fds);
-                cmo
-            },
-            #[cfg(any(target_os = "android", target_os = "linux"))]
-            (libc::SOL_SOCKET, libc::SCM_CREDENTIALS) => {
-                let cred: libc::ucred = ptr::read_unaligned(p as *const _);
-                ControlMessageOwned::ScmCredentials(cred)
-            }
-            (libc::SOL_SOCKET, libc::SCM_TIMESTAMP) => {
-                let tv: libc::timeval = ptr::read_unaligned(p as *const _);
-                ControlMessageOwned::ScmTimestamp(TimeVal::from(tv))
-            },
-            #[cfg(any(
-                target_os = "android",
-                target_os = "freebsd",
-                target_os = "ios",
-                target_os = "linux",
-                target_os = "macos"
-            ))]
-            (libc::IPPROTO_IPV6, libc::IPV6_PKTINFO) => {
-                let info = ptr::read_unaligned(p as *const libc::in6_pktinfo);
-                ControlMessageOwned::Ipv6PacketInfo(info)
-            }
-            #[cfg(any(
-                target_os = "android",
-                target_os = "ios",
-                target_os = "linux",
-                target_os = "macos"
-            ))]
-            (libc::IPPROTO_IP, libc::IP_PKTINFO) => {
-                let info = ptr::read_unaligned(p as *const libc::in_pktinfo);
-                ControlMessageOwned::Ipv4PacketInfo(info)
-            }
-            #[cfg(any(
-                target_os = "freebsd",
-                target_os = "ios",
-                target_os = "macos",
-                target_os = "netbsd",
-                target_os = "openbsd",
-            ))]
-            (libc::IPPROTO_IP, libc::IP_RECVIF) => {
-                let dl = ptr::read_unaligned(p as *const libc::sockaddr_dl);
-                ControlMessageOwned::Ipv4RecvIf(dl)
-            },
-            #[cfg(any(
-                target_os = "freebsd",
-                target_os = "ios",
-                target_os = "macos",
-                target_os = "netbsd",
-                target_os = "openbsd",
-            ))]
-            (libc::IPPROTO_IP, libc::IP_RECVDSTADDR) => {
-                let dl = ptr::read_unaligned(p as *const libc::in_addr);
-                ControlMessageOwned::Ipv4RecvDstAddr(dl)
-            },
-            (_, _) => {
-                let sl = slice::from_raw_parts(p, len);
-                let ucmsg = UnknownCmsg(*header, Vec::<u8>::from(&sl[..]));
-                ControlMessageOwned::Unknown(ucmsg)
-            }
-        }
-    }
-}
-
-/// A type-safe zero-copy wrapper around a single control message, as used wih
-/// [`sendmsg`](#fn.sendmsg).  More types may be added to this enum; do not
-/// exhaustively pattern-match it.
-///
-/// [Further reading](http://man7.org/linux/man-pages/man3/cmsg.3.html)
-#[allow(missing_debug_implementations)]
-pub enum ControlMessage<'a> {
-    /// A message of type `SCM_RIGHTS`, containing an array of file
-    /// descriptors passed between processes.
-    ///
-    /// See the description in the "Ancillary messages" section of the
-    /// [unix(7) man page](http://man7.org/linux/man-pages/man7/unix.7.html).
-    ///
-    /// Using multiple `ScmRights` messages for a single `sendmsg` call isn't
-    /// recommended since it causes platform-dependent behaviour: It might
-    /// swallow all but the first `ScmRights` message or fail with `EINVAL`.
-    /// Instead, you can put all fds to be passed into a single `ScmRights`
-    /// message.
-    ScmRights(&'a [RawFd]),
-    /// A message of type `SCM_CREDENTIALS`, containing the pid, uid and gid of
-    /// a process connected to the socket.
-    ///
-    /// This is similar to the socket option `SO_PEERCRED`, but requires a
-    /// process to explicitly send its credentials. A process running as root is
-    /// allowed to specify any credentials, while credentials sent by other
-    /// processes are verified by the kernel.
-    ///
-    /// For further information, please refer to the
-    /// [`unix(7)`](http://man7.org/linux/man-pages/man7/unix.7.html) man page.
-    // FIXME: When `#[repr(transparent)]` is stable, use it on `UnixCredentials`
-    // and put that in here instead of a raw ucred.
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    ScmCredentials(&'a libc::ucred),
-}
-
-// An opaque structure used to prevent cmsghdr from being a public type
-#[doc(hidden)]
-#[allow(missing_debug_implementations)]
-pub struct UnknownCmsg(cmsghdr, Vec<u8>);
-
-impl<'a> ControlMessage<'a> {
-    /// The value of CMSG_SPACE on this message.
-    /// Safe because CMSG_SPACE is always safe
-    fn space(&self) -> usize {
-        unsafe{CMSG_SPACE(self.len() as libc::c_uint) as usize}
-    }
-
-    /// The value of CMSG_LEN on this message.
-    /// Safe because CMSG_LEN is always safe
-    #[cfg(any(target_os = "android",
-              all(target_os = "linux", not(target_env = "musl"))))]
-    fn cmsg_len(&self) -> usize {
-        unsafe{CMSG_LEN(self.len() as libc::c_uint) as usize}
-    }
-
-    #[cfg(not(any(target_os = "android",
-                  all(target_os = "linux", not(target_env = "musl")))))]
-    fn cmsg_len(&self) -> libc::c_uint {
-        unsafe{CMSG_LEN(self.len() as libc::c_uint)}
-    }
-
-    /// Return a reference to the payload data as a byte pointer
-    fn data(&self) -> *const u8 {
-        match self {
-            &ControlMessage::ScmRights(fds) => {
-                fds as *const [RawFd] as *const u8
-            },
-            #[cfg(any(target_os = "android", target_os = "linux"))]
-            &ControlMessage::ScmCredentials(creds) => {
-                creds as *const libc::ucred as *const u8
-            }
-        }
-    }
-
-    /// The size of the payload, excluding its cmsghdr
-    fn len(&self) -> usize {
-        match self {
-            &ControlMessage::ScmRights(fds) => {
-                mem::size_of_val(fds)
-            },
-            #[cfg(any(target_os = "android", target_os = "linux"))]
-            &ControlMessage::ScmCredentials(creds) => {
-                mem::size_of_val(creds)
-            }
-        }
-    }
-
-    /// Returns the value to put into the `cmsg_level` field of the header.
-    fn cmsg_level(&self) -> libc::c_int {
-        match self {
-            &ControlMessage::ScmRights(_) => libc::SOL_SOCKET,
-            #[cfg(any(target_os = "android", target_os = "linux"))]
-            &ControlMessage::ScmCredentials(_) => libc::SOL_SOCKET,
-        }
-    }
-
-    /// Returns the value to put into the `cmsg_type` field of the header.
-    fn cmsg_type(&self) -> libc::c_int {
-        match self {
-            &ControlMessage::ScmRights(_) => libc::SCM_RIGHTS,
-            #[cfg(any(target_os = "android", target_os = "linux"))]
-            &ControlMessage::ScmCredentials(_) => libc::SCM_CREDENTIALS,
-        }
-    }
-
-    // Unsafe: cmsg must point to a valid cmsghdr with enough space to
-    // encode self.
+pub trait ControlMessageEncode {
     unsafe fn encode_into(&self, cmsg: *mut cmsghdr) {
         (*cmsg).cmsg_level = self.cmsg_level();
         (*cmsg).cmsg_type = self.cmsg_type();
@@ -784,15 +503,204 @@ impl<'a> ControlMessage<'a> {
             self.len()
         );
     }
+
+    /// The value of CMSG_SPACE on this message.
+    /// Safe because CMSG_SPACE is always safe
+    fn space(&self) -> usize {
+        unsafe{
+            CMSG_SPACE(self.len() as libc::c_uint) as usize
+        }
+    }
+
+    /// The value of CMSG_LEN on this message.
+    /// Safe because CMSG_LEN is always safe
+    #[cfg(any(target_os = "android",
+              all(target_os = "linux", not(target_env = "musl"))))]
+    fn cmsg_len(&self) -> usize {
+        unsafe{
+            CMSG_LEN(self.len() as libc::c_uint) as usize
+        }
+    }
+
+    #[cfg(not(any(target_os = "android",
+                  all(target_os = "linux", not(target_env = "musl")))))]
+    fn cmsg_len(&self) -> libc::c_uint {
+        unsafe{
+            CMSG_LEN(self.len() as libc::c_uint)
+        }
+    }
+
+    /// Return a reference to the payload data as a byte pointer
+    fn data(&self) -> *const u8;
+
+    /// The size of the payload, excluding its cmsghdr
+    fn len(&self) -> usize;
+
+    /// Returns the value to put into the `cmsg_level` field of the header.
+    fn cmsg_level(&self) -> libc::c_int;
+
+    /// Returns the value to put into the `cmsg_type` field of the header.
+    fn cmsg_type(&self) -> libc::c_int;
 }
 
+#[allow(missing_debug_implementations)]
+pub enum ControlMessageOwned {
+    ScmRights(ScmRights),
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    ScmCredentials(ScmCredentials),
+    ScmTimestamp(ScmTimestamp),
+    #[cfg(any(
+        target_os = "android",
+        target_os = "ios",
+        target_os = "linux",
+        target_os = "macos"
+    ))]
+    Ipv4PacketInfo(Ipv4PacketInfo),
+    #[cfg(any(
+        target_os = "android",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "ios",
+        target_os = "linux",
+        target_os = "macos",
+        target_os = "openbsd",
+        target_os = "netbsd",
+    ))]
+    Ipv6PacketInfo(Ipv6PacketInfo),
+    #[cfg(any(
+        target_os = "freebsd",
+        target_os = "ios",
+        target_os = "macos",
+        target_os = "netbsd",
+        target_os = "openbsd",
+    ))]
+    Ipv4RecvIf(Ipv4RecvIf),
+    #[cfg(any(
+        target_os = "freebsd",
+        target_os = "ios",
+        target_os = "macos",
+        target_os = "netbsd",
+        target_os = "openbsd",
+    ))]
+    Ipv4RecvDstAddr(Ipv4RecvDstAddr),
+    /// Catch-all variant for unimplemented cmsg types.
+    #[doc(hidden)]
+    Unknown(UnknownCmsg),
+}
+
+impl ControlMessage for ControlMessageOwned {
+    fn decode(header: &cmsghdr, buf: &[u8]) -> Option<Self> {
+        macro_rules! ok {
+            ( $t:ident ) => { ok!($t, $t) };
+            ( $t:ident, $name:ident ) => {
+                if let Some(cmsg) = $t::decode(header, buf) {
+                    return Some(ControlMessageOwned::$name(cmsg));
+                }
+            };
+        }
+
+        ok!(ScmRights);
+
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        ok!(ScmCredentials);
+
+        ok!(ScmTimestamp);
+
+        #[cfg(any(
+            target_os = "android",
+            target_os = "ios",
+            target_os = "linux",
+            target_os = "macos"
+        ))]
+        ok!(Ipv4PacketInfo);
+
+        #[cfg(any(
+            target_os = "android",
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "ios",
+            target_os = "linux",
+            target_os = "macos",
+            target_os = "openbsd",
+            target_os = "netbsd",
+        ))]
+        ok!(Ipv6PacketInfo);
+
+        #[cfg(any(
+            target_os = "freebsd",
+            target_os = "ios",
+            target_os = "macos",
+            target_os = "netbsd",
+            target_os = "openbsd",
+        ))]
+        ok!(Ipv4RecvIf);
+
+        #[cfg(any(
+            target_os = "freebsd",
+            target_os = "ios",
+            target_os = "macos",
+            target_os = "netbsd",
+            target_os = "openbsd",
+        ))]
+        ok!(Ipv4RecvDstAddr);
+
+        Some(ControlMessageOwned::Unknown(UnknownCmsg(*header, buf.into())))
+    }
+}
+
+#[allow(missing_debug_implementations)]
+pub enum ControlMessageRef<'a> {
+    ScmRights(&'a [RawFd]),
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    ScmCredentials(&'a libc::ucred)
+}
+
+impl<'a> ControlMessageEncode for ControlMessageRef<'a> {
+    fn data(&self) -> *const u8 {
+        match self {
+            &ControlMessageRef::ScmRights(fds) => fds.as_ptr() as *const _,
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            &ControlMessageRef::ScmCredentials(ucred) => ucred as *const libc::ucred as *const _
+        }
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            &ControlMessageRef::ScmRights(fds) => mem::size_of_val(fds),
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            &ControlMessageRef::ScmCredentials(ucred) => mem::size_of_val(ucred)
+        }
+    }
+    fn cmsg_level(&self) -> libc::c_int {
+        match self {
+            &ControlMessageRef::ScmRights(_) => libc::SOL_SOCKET,
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            &ControlMessageRef::ScmCredentials(_) => libc::SOL_SOCKET
+        }
+    }
+
+    fn cmsg_type(&self) -> libc::c_int {
+        match self {
+            &ControlMessageRef::ScmRights(_) => libc::SCM_RIGHTS,
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            &ControlMessageRef::ScmCredentials(_) => libc::SCM_CREDENTIALS
+        }
+    }
+}
+
+
+// An opaque structure used to prevent cmsghdr from being a public type
+#[doc(hidden)]
+#[allow(missing_debug_implementations)]
+pub struct UnknownCmsg(pub cmsghdr, pub Vec<u8>);
 
 /// Send data in scatter-gather vectors to a socket, possibly accompanied
 /// by ancillary data. Optionally direct the message at the given address,
 /// as with sendto.
 ///
 /// Allocates if cmsgs is nonempty.
-pub fn sendmsg(fd: RawFd, iov: &[IoVec<&[u8]>], cmsgs: &[ControlMessage],
+pub fn sendmsg(fd: RawFd, iov: &[IoVec<&[u8]>], cmsgs: &[ControlMessageRef],
                flags: MsgFlags, addr: Option<&SockAddr>) -> Result<usize>
 {
     let capacity = cmsgs.iter().map(|c| c.space()).sum();

@@ -16,7 +16,7 @@ exclude     = [
 ]
 
 [dependencies]
-libc = { git = "https://github.com/asomers/libc", rev="fba2064" }
+libc = "*"
 bitflags = "1.0"
 cfg-if = "0.1.0"
 void = "1.0.2"

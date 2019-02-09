@@ -260,7 +260,7 @@ impl fmt::Display for TimeSpec {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct TimeVal(timeval);
+pub struct TimeVal(pub(crate) timeval);
 
 const MICROS_PER_SEC: i64 = 1_000_000;
 
