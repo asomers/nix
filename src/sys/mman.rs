@@ -223,14 +223,34 @@ libc_bitflags!{
     }
 }
 
-/// Locks all memory pages that contain part of the address range with `length` bytes starting at
-/// `addr`. Locked pages never move to the swap area.
+/// Locks all memory pages that contain part of the address range with `length`
+/// bytes starting at `addr`.
+///
+/// Locked pages never move to the swap area.
+///
+/// See
+/// [`mlock`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/mlock.html)
+/// for details.
+///
+/// # Safety
+///
+/// This function directly manipulates the operating system's memory management
+/// system.  Read your operating system's man pages for full details.
 pub unsafe fn mlock(addr: *const c_void, length: size_t) -> Result<()> {
     Errno::result(libc::mlock(addr, length)).map(drop)
 }
 
-/// Unlocks all memory pages that contain part of the address range with `length` bytes starting at
-/// `addr`.
+/// Unlocks all memory pages that contain part of the address range with
+/// `length` bytes starting at `addr`.
+///
+/// See
+/// [`mlock`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/mlock.html)
+/// for details.
+///
+/// # Safety
+///
+/// This function directly manipulates the operating system's memory management
+/// system.  Read your operating system's man pages for full details.
 pub unsafe fn munlock(addr: *const c_void, length: size_t) -> Result<()> {
     Errno::result(libc::munlock(addr, length)).map(drop)
 }
@@ -246,8 +266,16 @@ pub fn munlockall() -> Result<()> {
     unsafe { Errno::result(libc::munlockall()) }.map(drop)
 }
 
-/// Calls to mmap are inherently unsafe, so they must be made in an unsafe block. Typically
-/// a higher-level abstraction will hide the unsafe interactions with the mmap'd region.
+/// Allocate memory, or map files or devices into memory.
+///
+/// See
+/// [`mmap`](http://pubs.opengroup.org/onlinepubs/9699919799/functions/mmap.html)
+/// for details.
+///
+/// # Safety
+///
+/// This function directly manipulates the operating system's memory management
+/// system.  Read your operating system's man pages for full details.
 pub unsafe fn mmap(addr: *mut c_void, length: size_t, prot: ProtFlags, flags: MapFlags, fd: RawFd, offset: off_t) -> Result<*mut c_void> {
     let ret = libc::mmap(addr, length, prot.bits(), flags.bits(), fd, offset);
 
@@ -258,10 +286,31 @@ pub unsafe fn mmap(addr: *mut c_void, length: size_t, prot: ProtFlags, flags: Ma
     }
 }
 
+/// Remove mappings created by [`mmap`](fn.munmap.html)
+///
+/// See
+/// [`munmap`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/munmap.html
+/// for details.
+///
+/// # Safety
+///
+/// This function directly manipulates the operating system's memory management
+/// system.  Read your operating system's man pages for full details.
 pub unsafe fn munmap(addr: *mut c_void, len: size_t) -> Result<()> {
     Errno::result(libc::munmap(addr, len)).map(drop)
 }
 
+/// give advice about use of memory
+///
+/// See
+/// [`posix_madvise`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/posix_madvise.html)
+/// for details.  Note that `madvise` and `posix_madvise` are identical except
+/// in how the error is returned.
+///
+/// # Safety
+///
+/// This function directly manipulates the operating system's memory management
+/// system.  Read your operating system's man pages for full details.
 pub unsafe fn madvise(addr: *mut c_void, length: size_t, advise: MmapAdvise) -> Result<()> {
     Errno::result(libc::madvise(addr, length, advise as i32)).map(drop)
 }
@@ -295,6 +344,16 @@ pub unsafe fn mprotect(addr: *mut c_void, length: size_t, prot: ProtFlags) -> Re
     Errno::result(libc::mprotect(addr, length, prot.bits())).map(drop)
 }
 
+/// Synchronize a mapped region
+///
+/// See
+/// [`msync`](http://pubs.opengroup.org/onlinepubs/9699919799/functions/msync.html)
+/// for details.
+///
+/// # Safety
+///
+/// This function directly manipulates the operating system's memory management
+/// system.  Read your operating system's man pages for full details.
 pub unsafe fn msync(addr: *mut c_void, length: size_t, flags: MsFlags) -> Result<()> {
     Errno::result(libc::msync(addr, length, flags.bits())).map(drop)
 }
