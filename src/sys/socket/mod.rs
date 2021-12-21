@@ -27,6 +27,8 @@ pub mod sockopt;
  *
  */
 
+pub use self::addr::{SockaddrLike, SockaddrStorage};
+
 #[cfg(not(any(target_os = "illumos", target_os = "solaris")))]
 pub use self::addr::{
     AddressFamily,
@@ -1779,7 +1781,7 @@ pub fn listen(sockfd: RawFd, backlog: usize) -> Result<()> {
 /// Bind a name to a socket
 ///
 /// [Further reading](https://pubs.opengroup.org/onlinepubs/9699919799/functions/bind.html)
-pub fn bind(fd: RawFd, addr: &SockAddr) -> Result<()> {
+pub fn bind(fd: RawFd, addr: &dyn SockaddrLike) -> Result<()> {
     let res = unsafe {
         let (ptr, len) = addr.as_ffi_pair();
         libc::bind(fd, ptr, len)
@@ -1825,7 +1827,7 @@ pub fn accept4(sockfd: RawFd, flags: SockFlag) -> Result<RawFd> {
 /// Initiate a connection on a socket
 ///
 /// [Further reading](https://pubs.opengroup.org/onlinepubs/9699919799/functions/connect.html)
-pub fn connect(fd: RawFd, addr: &SockAddr) -> Result<()> {
+pub fn connect(fd: RawFd, addr: &dyn SockaddrLike) -> Result<()> {
     let res = unsafe {
         let (ptr, len) = addr.as_ffi_pair();
         libc::connect(fd, ptr, len)
@@ -1855,33 +1857,29 @@ pub fn recv(sockfd: RawFd, buf: &mut [u8], flags: MsgFlags) -> Result<usize> {
 /// address of the sender.
 ///
 /// [Further reading](https://pubs.opengroup.org/onlinepubs/9699919799/functions/recvfrom.html)
-pub fn recvfrom(sockfd: RawFd, buf: &mut [u8])
-    -> Result<(usize, Option<SockAddr>)>
+pub fn recvfrom<T:SockaddrLike>(sockfd: RawFd, buf: &mut [u8])
+    -> Result<(usize, Option<T>)>
 {
     unsafe {
-        let mut addr: sockaddr_storage = mem::zeroed();
-        let mut len = mem::size_of::<sockaddr_storage>() as socklen_t;
+        let mut addr = mem::MaybeUninit::uninit();
+        let mut len = mem::size_of::<T>() as socklen_t;
 
         let ret = Errno::result(libc::recvfrom(
             sockfd,
             buf.as_ptr() as *mut c_void,
             buf.len() as size_t,
             0,
-            &mut addr as *mut libc::sockaddr_storage as *mut libc::sockaddr,
+            addr.as_mut_ptr() as *mut libc::sockaddr,
             &mut len as *mut socklen_t))? as usize;
 
-        match sockaddr_storage_to_addr(&addr, len as usize) {
-            Err(Errno::ENOTCONN) => Ok((ret, None)),
-            Ok(addr) => Ok((ret, Some(addr))),
-            Err(e) => Err(e)
-        }
+        Ok((ret, T::from_raw(&addr.assume_init(), Some(len))))
     }
 }
 
 /// Send a message to a socket
 ///
 /// [Further reading](https://pubs.opengroup.org/onlinepubs/9699919799/functions/sendto.html)
-pub fn sendto(fd: RawFd, buf: &[u8], addr: &SockAddr, flags: MsgFlags) -> Result<usize> {
+pub fn sendto(fd: RawFd, buf: &[u8], addr: &dyn SockaddrLike, flags: MsgFlags) -> Result<usize> {
     let ret = unsafe {
         let (ptr, len) = addr.as_ffi_pair();
         libc::sendto(fd, buf.as_ptr() as *const c_void, buf.len() as size_t, flags.bits(), ptr, len)
@@ -1954,7 +1952,7 @@ pub fn setsockopt<O: SetSockOpt>(fd: RawFd, opt: O, val: &O::Val) -> Result<()> 
 /// Get the address of the peer connected to the socket `fd`.
 ///
 /// [Further reading](https://pubs.opengroup.org/onlinepubs/9699919799/functions/getpeername.html)
-pub fn getpeername(fd: RawFd) -> Result<SockAddr> {
+pub fn getpeername<T: SockaddrLike>(fd: RawFd) -> Result<T> {
     unsafe {
         let mut addr = mem::MaybeUninit::uninit();
         let mut len = mem::size_of::<sockaddr_storage>() as socklen_t;
@@ -1967,14 +1965,14 @@ pub fn getpeername(fd: RawFd) -> Result<SockAddr> {
 
         Errno::result(ret)?;
 
-        sockaddr_storage_to_addr(&addr.assume_init(), len as usize)
+        T::from_raw(&addr.assume_init(), Some(len)).ok_or(Errno::EINVAL)
     }
 }
 
 /// Get the current address to which the socket `fd` is bound.
 ///
 /// [Further reading](https://pubs.opengroup.org/onlinepubs/9699919799/functions/getsockname.html)
-pub fn getsockname(fd: RawFd) -> Result<SockAddr> {
+pub fn getsockname<T: SockaddrLike>(fd: RawFd) -> Result<T> {
     unsafe {
         let mut addr = mem::MaybeUninit::uninit();
         let mut len = mem::size_of::<sockaddr_storage>() as socklen_t;
@@ -1987,7 +1985,7 @@ pub fn getsockname(fd: RawFd) -> Result<SockAddr> {
 
         Errno::result(ret)?;
 
-        sockaddr_storage_to_addr(&addr.assume_init(), len as usize)
+        T::from_raw(&addr.assume_init(), Some(len)).ok_or(Errno::EINVAL)
     }
 }
 
@@ -1999,6 +1997,11 @@ pub fn getsockname(fd: RawFd) -> Result<SockAddr> {
 /// allocated and valid.  It must be at least as large as all the useful parts
 /// of the structure.  Note that in the case of a `sockaddr_un`, `len` need not
 /// include the terminating null.
+#[deprecated(
+    since = "0.24.0",
+    note = "use SockaddrLike or SockaddrStorage instead"
+)]
+#[allow(deprecated)]
 pub fn sockaddr_storage_to_addr(
     addr: &sockaddr_storage,
     len: usize) -> Result<SockAddr> {

@@ -1,3 +1,4 @@
+use cfg_if::cfg_if;
 use super::sa_family_t;
 use cfg_if::cfg_if;
 use crate::{Result, NixPath};
@@ -34,6 +35,7 @@ pub use self::vsock::VsockAddr;
 
 /// These constants specify the protocol family to be used
 /// in [`socket`](fn.socket.html) and [`socketpair`](fn.socketpair.html)
+// Should this be u8?
 #[repr(i32)]
 #[non_exhaustive]
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
@@ -586,6 +588,7 @@ impl fmt::Display for Ipv6Addr {
 
 /// A wrapper around `sockaddr_un`.
 #[derive(Clone, Copy, Debug)]
+#[repr(C)]
 pub struct UnixAddr {
     // INVARIANT: sun & sun_len are valid as defined by docs for from_raw_parts
     sun: libc::sockaddr_un,
@@ -836,8 +839,296 @@ impl Hash for UnixAddr {
     }
 }
 
+/// Anything that, in C, can be cast back and forth to `sockaddr`.
+pub trait SockaddrLike: private::Sealed {
+    /// Unsafe constructor from a variable length source
+    ///
+    /// Some C APIs from provide `len`, and others do not.  If it's provided it
+    /// will be validated.  If not, it will be guessed based on the family.
+    unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
+        -> Option<Self> where Self: Sized;
+
+    fn family(&self) -> Option<AddressFamily> {
+        // Safe since all implementors have a sa_family field at the same
+        // address, and they're all repr(transparent)
+        AddressFamily::from_i32(
+            unsafe {
+                (*(self as *const Self as *const libc::sockaddr)).sa_family as i32
+            }
+        )
+    }
+
+    cfg_if! {
+        if #[cfg(any(target_os = "dragonfly",
+                  target_os = "freebsd",
+                  target_os = "ios",
+                  target_os = "macos",
+                  target_os = "netbsd",
+                  target_os = "openbsd"))] {
+            /// Return the length of the sockaddr structure
+            fn socklen(&self) -> libc::socklen_t {
+                // Safe since all implementors have a sa_len field at the same
+                // address, and they're all repr(transparent).
+                // Robust for all implementors.
+                unsafe {
+                    (*(self as *const Self as *const libc::sockaddr)).sa_len
+                }.into()
+            }
+        } else {
+            /// Return the length of the sockaddr structure
+            fn socklen(&self) -> libc::socklen_t {
+                // No robust default implementation is possible without an
+                // sa_len field.  Implementors with a variable size must
+                // override this method.
+                mem::size_of_val(&self) as libc::socklen_t
+            }
+        }
+    }
+
+    /// Used for many syscalls that need a socket address
+    fn as_ffi_pair(&self) -> (*const libc::sockaddr, libc::socklen_t) {
+        (self as *const Self as *const libc::sockaddr, self.socklen().into())
+    }
+}
+
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Sockaddr(libc::sockaddr);
+impl private::Sealed for Sockaddr {}
+impl SockaddrLike for Sockaddr {
+    unsafe fn from_raw(_addr: *const libc::sockaddr, _len: Option<libc::socklen_t>)
+        -> Option<Self> where Self: Sized
+    {
+        unimplemented!()
+    }
+}
+
+#[cfg(feature = "net")]
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct SockaddrIn(libc::sockaddr_in);
+#[cfg(feature = "net")]
+impl private::Sealed for SockaddrIn {}
+#[cfg(feature = "net")]
+impl SockaddrLike for SockaddrIn {
+    unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
+        -> Option<Self> where Self: Sized
+    {
+        if let Some(l) = len {
+            if l != mem::size_of::<libc::sockaddr_in>() as libc::socklen_t {
+                return None;
+            }
+        }
+        if (*addr).sa_family as i32 != libc::AF_INET as i32 {
+            return None;
+        }
+        Some(SockaddrIn(*(addr as *const libc::sockaddr_in)))
+    }
+}
+
+#[cfg(feature = "net")]
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct SockaddrIn6(libc::sockaddr_in6);
+#[cfg(feature = "net")]
+impl private::Sealed for SockaddrIn6 {}
+#[cfg(feature = "net")]
+impl SockaddrLike for SockaddrIn6 {
+    unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
+        -> Option<Self> where Self: Sized
+    {
+        if let Some(l) = len {
+            if l != mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t {
+                return None;
+            }
+        }
+        if (*addr).sa_family as i32 != libc::AF_INET6 as i32 {
+            return None;
+        }
+        Some(SockaddrIn6(*(addr as *const libc::sockaddr_in6)))
+    }
+}
+
+#[derive(Clone, Copy, Eq)]
+#[repr(C)]
+pub union SockaddrStorage {
+    #[cfg(feature = "net")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "net")))]
+    dl: LinkAddr,
+    sa: Sockaddr,
+    #[cfg(feature = "net")]
+    sin: SockaddrIn,
+    #[cfg(feature = "net")]
+    sin6: SockaddrIn6,
+    ss: libc::sockaddr_storage,
+    su: UnixAddr
+    // TODO Netlink
+    // TODO Alg
+    // TODO SysControl
+    // TODO: Vsock
+}
+impl private::Sealed for SockaddrStorage {}
+impl SockaddrLike for SockaddrStorage {
+    unsafe fn from_raw(addr: *const libc::sockaddr, l: Option<libc::socklen_t>)
+        -> Option<Self> where Self: Sized
+    {
+        if let Some(len) = l {
+            let mut ss: libc::sockaddr_storage = mem::zeroed();
+            let ssp = &mut ss as *mut libc::sockaddr_storage as *mut u8;
+            ptr::copy(addr as *const u8, ssp, len as usize);
+            Some(Self{ss: ss})
+        } else {
+            // If length is not available and addr is of a fixed-length type,
+            // copy it.  If addr is of a variable length type and len is not
+            // available, then there's nothing we can do.
+            match (*addr).sa_family as i32 {
+                libc::AF_INET => SockaddrIn::from_raw(addr, l)
+                    .map(|sin| Self{ sin: sin}),
+                libc::AF_INET6 => SockaddrIn6::from_raw(addr, l)
+                    .map(|sin6| Self{ sin6: sin6}),
+                #[cfg(any(target_os = "dragonfly",
+                          target_os = "freebsd",
+                          target_os = "ios",
+                          target_os = "macos",
+                          target_os = "illumos",
+                          target_os = "netbsd",
+                          target_os = "openbsd"))]
+                libc::AF_LINK => LinkAddr::from_raw(addr, l)
+                    .map(|dl| Self{ dl: dl}),
+                #[cfg(any(target_os = "android",
+                          target_os = "fuchsia",
+                          target_os = "linux"
+                ))]
+                libc::AF_PACKET => LinkAddr::from_raw(addr, l)
+                    .map(|dl| Self{ dl: dl}),
+                _ => None
+            }
+        }
+    }
+}
+
+impl SockaddrStorage {
+    #[cfg(feature = "net")]
+    pub fn from_std(_std: &net::SocketAddr) -> Self {
+        unimplemented!()
+    }
+
+    #[cfg(any(target_os = "dragonfly",
+              target_os = "freebsd",
+              target_os = "ios",
+              target_os = "macos",
+              target_os = "illumos",
+              target_os = "netbsd",
+              target_os = "openbsd"))]
+    #[cfg(feature = "net")]
+    pub fn as_sockaddr_dl(&self) -> Option<&LinkAddr> {
+        if self.family() == Some(AddressFamily::Link) &&
+          self.socklen() >= mem::size_of::<libc::sockaddr_dl>() as libc::socklen_t
+        {
+            // Safe because family and len are validated
+            Some(unsafe{&self.dl})
+        } else {
+            None
+        }
+    }
+
+    #[cfg(feature = "net")]
+    pub fn as_sockaddr_in(&self) -> Option<&SockaddrIn> {
+        if self.family() == Some(AddressFamily::Inet) &&
+          self.socklen() >= mem::size_of::<libc::sockaddr_in>() as libc::socklen_t
+        {
+            // Safe because family and len are validated
+            Some(unsafe{&self.sin})
+        } else {
+            None
+        }
+    }
+
+    #[cfg(feature = "net")]
+    pub fn as_sockaddr_in6(&self) -> Option<&SockaddrIn6> {
+        if self.family() == Some(AddressFamily::Inet6) &&
+          self.socklen() >= mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t
+        {
+            // Safe because family and len are validated
+            Some(unsafe{&self.sin6})
+        } else {
+            None
+        }
+    }
+}
+
+impl fmt::Debug for SockaddrStorage {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("SockaddrStorage")
+            // Safe because sockaddr_storage has the least specific
+            // field types
+            .field("ss", unsafe{&self.ss})
+            .finish()
+    }
+}
+
+impl Hash for SockaddrStorage {
+    fn hash<H: Hasher>(&self, s: &mut H) {
+        unsafe {
+            match self.sa.0.sa_family as i32 {
+                libc::AF_INET => self.sin.hash(s),
+                libc::AF_INET6 => self.sin6.hash(s),
+                #[cfg(any(target_os = "dragonfly",
+                          target_os = "freebsd",
+                          target_os = "ios",
+                          target_os = "macos",
+                          target_os = "illumos",
+                          target_os = "netbsd",
+                          target_os = "openbsd"))]
+                libc::AF_LINK => self.dl.hash(s),
+                #[cfg(any(target_os = "android",
+                          target_os = "linux",
+                          target_os = "fuchsia"
+                ))]
+                libc::AF_PACKET => self.dl.hash(s),
+                _ => self.ss.hash(s)
+                // TODO: other sockaddr types
+            }
+        }
+    }
+}
+
+impl PartialEq for SockaddrStorage {
+    fn eq(&self, other: &Self) -> bool {
+        unsafe {
+            match (self.sa.0.sa_family as i32, other.sa.0.sa_family as i32) {
+                (libc::AF_INET, libc::AF_INET) => self.sin == other.sin,
+                (libc::AF_INET6, libc::AF_INET6) => self.sin6 == other.sin6,
+                #[cfg(any(target_os = "dragonfly",
+                          target_os = "freebsd",
+                          target_os = "ios",
+                          target_os = "macos",
+                          target_os = "illumos",
+                          target_os = "netbsd",
+                          target_os = "openbsd"))]
+                (libc::AF_LINK, libc::AF_LINK) => self.dl == other.dl,
+                #[cfg(any(target_os = "android",
+                          target_os = "fuchsia",
+                          target_os = "linux"
+                ))]
+                (libc::AF_PACKET, libc::AF_PACKET) => self.dl == other.dl,
+                _ => false,
+                // TODO: other sockaddr types
+            }
+        }
+    }
+}
+
+mod private {
+    pub trait Sealed {}
+}
+
 /// Represents a socket address
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[deprecated(
+    since = "0.24.0",
+    note = "use SockaddrLike or SockaddrStorage instead"
+)]
 #[non_exhaustive]
 pub enum SockAddr {
     #[cfg(feature = "net")]
@@ -871,6 +1162,7 @@ pub enum SockAddr {
     Vsock(VsockAddr),
 }
 
+#[allow(deprecated)]
 impl SockAddr {
     feature! {
     #![feature = "net"]
@@ -1099,6 +1391,7 @@ impl SockAddr {
     }
 }
 
+#[allow(deprecated)]
 impl fmt::Display for SockAddr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -1311,7 +1604,7 @@ pub mod sys_control {
 mod datalink {
     feature! {
     #![feature = "net"]
-    use super::{fmt, AddressFamily};
+    use super::{fmt, mem, private, AddressFamily, SockaddrLike};
 
     /// Hardware Address
     #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -1375,6 +1668,24 @@ mod datalink {
                 addr[5])
         }
     }
+    impl private::Sealed for LinkAddr {}
+    impl SockaddrLike for LinkAddr {
+        unsafe fn from_raw(addr: *const libc::sockaddr,
+                           len: Option<libc::socklen_t>)
+            -> Option<Self> where Self: Sized
+        {
+            if let Some(l) = len {
+                if l != mem::size_of::<libc::sockaddr_ll>() as libc::socklen_t {
+                    return None;
+                }
+            }
+            if (*addr).sa_family as i32 != libc::AF_PACKET as i32 {
+                return None;
+            }
+            Some(LinkAddr(*(addr as *const libc::sockaddr_ll)))
+        }
+    }
+
     }
 }
 
@@ -1389,7 +1700,7 @@ mod datalink {
 mod datalink {
     feature! {
     #![feature = "net"]
-    use super::{fmt, AddressFamily};
+    use super::{fmt, mem, private, AddressFamily, SockaddrLike};
 
     /// Hardware Address
     #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -1475,6 +1786,24 @@ mod datalink {
                 addr[5])
         }
     }
+    impl private::Sealed for LinkAddr {}
+    impl SockaddrLike for LinkAddr {
+        unsafe fn from_raw(addr: *const libc::sockaddr,
+                           len: Option<libc::socklen_t>)
+            -> Option<Self> where Self: Sized
+        {
+            if let Some(l) = len {
+                if l != mem::size_of::<libc::sockaddr_dl>() as libc::socklen_t {
+                    return None;
+                }
+            }
+            if (*addr).sa_family as i32 != libc::AF_LINK as i32 {
+                return None;
+            }
+            Some(LinkAddr(*(addr as *const libc::sockaddr_dl)))
+        }
+    }
+
     }
 }
 
@@ -1557,6 +1886,7 @@ mod tests {
               target_os = "illumos",
               target_os = "openbsd"))]
     use super::*;
+    use super::super::socklen_t;
 
     #[cfg(any(target_os = "dragonfly",
               target_os = "freebsd",
@@ -1583,20 +1913,14 @@ mod tests {
         let bytes = [20i8, 18, 7, 0, 6, 3, 6, 0, 101, 110, 48, 24, 101, -112, -35, 76, -80];
         let ptr = bytes.as_ptr();
         let sa = ptr as *const libc::sockaddr;
-        let _sock_addr = unsafe { SockAddr::from_libc_sockaddr(sa) };
+        let len = Some(bytes.len()) as socklen_t;
 
-        assert!(_sock_addr.is_some());
-
-        let sock_addr = _sock_addr.unwrap();
-
-        assert_eq!(sock_addr.family(), AddressFamily::Link);
-
-        match sock_addr {
-            SockAddr::Link(ether_addr) => {
-                assert_eq!(ether_addr.addr(), [24u8, 101, 144, 221, 76, 176]);
-            },
-            _ => { unreachable!() }
-        };
+        let sock_addr = SockaddrStorage::from_raw(sa, Some(len)).unwrap();
+        assert_eq!(sock_addr.family(), Some(AddressFamily::Link));
+        match sock_addr.as_sockaddr_dl() {
+            Some(dl) => assert_eq!(dl.addr(), [24u8, 101, 144, 221, 76, 176]),
+            None => panic!("Can't unwrap sockaddr storage")
+        }
     }
 
     #[cfg(target_os = "illumos")]
