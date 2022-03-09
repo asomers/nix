@@ -1,4 +1,3 @@
-use cfg_if::cfg_if;
 use super::sa_family_t;
 use cfg_if::cfg_if;
 use crate::{Result, NixPath};
@@ -802,6 +801,41 @@ impl UnixAddr {
     }
 }
 
+impl private::Sealed for UnixAddr {}
+impl SockaddrLike for UnixAddr {
+    unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
+        -> Option<Self> where Self: Sized
+    {
+        if let Some(l) = len {
+            if (l as usize) < offset_of!(libc::sockaddr_un, sun_path) {
+                return None;
+            } else if l > u8::MAX as libc::socklen_t {
+                return None;
+            }
+        }
+        if (*addr).sa_family as i32 != libc::AF_UNIX as i32 {
+            return None;
+        }
+        let mut su: libc::sockaddr_un = mem::zeroed();
+        let sup = &mut su as *mut libc::sockaddr_un as *mut u8;
+        cfg_if!{
+            if #[cfg(any(target_os = "android",
+                         target_os = "fuchsia",
+                         target_os = "illumos",
+                         target_os = "linux"
+                ))] {
+                let su_len = len.unwrap_or(
+                    mem::size_of::<libc::sockaddr_un>() as libc::socklen_t
+                );
+            } else {
+                let su_len = len.unwrap_or((*addr).sa_len as libc::socklen_t);
+            }
+        };
+        ptr::copy(addr as *const u8, sup, su_len as usize);
+        Some(Self::from_raw_parts(su, su_len as u8))
+    }
+}
+
 #[cfg(any(target_os = "android", target_os = "linux"))]
 fn fmt_abstract(abs: &[u8], f: &mut fmt::Formatter) -> fmt::Result {
     use fmt::Write;
@@ -1235,66 +1269,6 @@ impl SockAddr {
     #[deprecated(since = "0.23.0", note = "use .to_string() instead")]
     pub fn to_str(&self) -> String {
         format!("{}", self)
-    }
-
-    /// Creates a `SockAddr` struct from libc's sockaddr.
-    ///
-    /// Supports only the following address families: Unix, Inet (v4 & v6), Netlink and System.
-    /// Returns None for unsupported families.
-    ///
-    /// # Safety
-    ///
-    /// unsafe because it takes a raw pointer as argument.  The caller must
-    /// ensure that the pointer is valid.
-    #[cfg(not(target_os = "fuchsia"))]
-    #[cfg(feature = "net")]
-    pub(crate) unsafe fn from_libc_sockaddr(addr: *const libc::sockaddr) -> Option<SockAddr> {
-        if addr.is_null() {
-            None
-        } else {
-            match AddressFamily::from_i32(i32::from((*addr).sa_family)) {
-                Some(AddressFamily::Unix) => None,
-                #[cfg(feature = "net")]
-                Some(AddressFamily::Inet) => Some(SockAddr::Inet(
-                    InetAddr::V4(*(addr as *const libc::sockaddr_in)))),
-                #[cfg(feature = "net")]
-                Some(AddressFamily::Inet6) => Some(SockAddr::Inet(
-                    InetAddr::V6(*(addr as *const libc::sockaddr_in6)))),
-                #[cfg(any(target_os = "android", target_os = "linux"))]
-                Some(AddressFamily::Netlink) => Some(SockAddr::Netlink(
-                    NetlinkAddr(*(addr as *const libc::sockaddr_nl)))),
-                #[cfg(all(feature = "ioctl",
-                          any(target_os = "ios", target_os = "macos")))]
-                Some(AddressFamily::System) => Some(SockAddr::SysControl(
-                    SysControlAddr(*(addr as *const libc::sockaddr_ctl)))),
-                #[cfg(any(target_os = "android", target_os = "linux"))]
-                #[cfg(feature = "net")]
-                Some(AddressFamily::Packet) => Some(SockAddr::Link(
-                    LinkAddr(*(addr as *const libc::sockaddr_ll)))),
-                #[cfg(any(target_os = "dragonfly",
-                          target_os = "freebsd",
-                          target_os = "ios",
-                          target_os = "macos",
-                          target_os = "netbsd",
-                          target_os = "illumos",
-                          target_os = "openbsd"))]
-                #[cfg(feature = "net")]
-                Some(AddressFamily::Link) => {
-                    let ether_addr = LinkAddr(*(addr as *const libc::sockaddr_dl));
-                    if ether_addr.is_empty() {
-                        None
-                    } else {
-                        Some(SockAddr::Link(ether_addr))
-                    }
-                },
-                #[cfg(any(target_os = "android", target_os = "linux"))]
-                Some(AddressFamily::Vsock) => Some(SockAddr::Vsock(
-                    VsockAddr(*(addr as *const libc::sockaddr_vm)))),
-                // Other address families are currently not supported and simply yield a None
-                // entry instead of a proper conversion to a `SockAddr`.
-                Some(_) | None => None,
-            }
-        }
     }
 
     /// Conversion from nix's SockAddr type to the underlying libc sockaddr type.
@@ -1913,9 +1887,9 @@ mod tests {
         let bytes = [20i8, 18, 7, 0, 6, 3, 6, 0, 101, 110, 48, 24, 101, -112, -35, 76, -80];
         let ptr = bytes.as_ptr();
         let sa = ptr as *const libc::sockaddr;
-        let len = Some(bytes.len()) as socklen_t;
+        let len = Some(bytes.len() as socklen_t);
 
-        let sock_addr = SockaddrStorage::from_raw(sa, Some(len)).unwrap();
+        let sock_addr = SockaddrStorage::from_raw(sa, len).unwrap();
         assert_eq!(sock_addr.family(), Some(AddressFamily::Link));
         match sock_addr.as_sockaddr_dl() {
             Some(dl) => assert_eq!(dl.addr(), [24u8, 101, 144, 221, 76, 176]),
