@@ -1027,6 +1027,25 @@ impl AsRef<libc::sockaddr_in6> for SockaddrIn6 {
     }
 }
 
+#[cfg(feature = "net")]
+impl From<net::SocketAddrV6> for SockaddrIn6 {
+    fn from(addr: net::SocketAddrV6) -> Self {
+        Self(libc::sockaddr_in6{
+            #[cfg(any(target_os = "dragonfly", target_os = "freebsd",
+                      target_os = "haiku", target_os = "hermit",
+                      target_os = "ios", target_os = "macos",
+                      target_os = "netbsd", target_os = "openbsd"))]
+            sin6_len: mem::size_of::<libc::sockaddr_in6>() as u8,
+            sin6_family: AddressFamily::Inet6 as sa_family_t,
+            sin6_port: addr.port().to_be(),  // network byte order
+            sin6_addr: Ipv6Addr::from_std(addr.ip()).0,
+            sin6_flowinfo: addr.flowinfo(),  // host byte order
+            sin6_scope_id: addr.scope_id(),  // host byte order
+            .. unsafe { mem::zeroed() }
+        })
+    }
+}
+
 #[derive(Clone, Copy, Eq)]
 #[repr(C)]
 pub union SockaddrStorage {
@@ -1057,6 +1076,9 @@ impl SockaddrLike for SockaddrStorage {
     unsafe fn from_raw(addr: *const libc::sockaddr, l: Option<libc::socklen_t>)
         -> Option<Self> where Self: Sized
     {
+        if addr.is_null() {
+            return None;
+        }
         if let Some(len) = l {
             let mut ss: libc::sockaddr_storage = mem::zeroed();
             let ssp = &mut ss as *mut libc::sockaddr_storage as *mut u8;
