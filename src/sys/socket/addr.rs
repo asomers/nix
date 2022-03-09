@@ -879,6 +879,11 @@ pub trait SockaddrLike: private::Sealed {
     ///
     /// Some C APIs from provide `len`, and others do not.  If it's provided it
     /// will be validated.  If not, it will be guessed based on the family.
+    ///
+    /// # Safety
+    ///
+    /// `addr` must be valid for the specific type of sockaddr.  `len`, if
+    /// present, must be the length of valid data in `addr`.
     unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
         -> Option<Self> where Self: Sized;
 
@@ -957,6 +962,23 @@ impl SockaddrLike for SockaddrIn {
             return None;
         }
         Some(SockaddrIn(*(addr as *const libc::sockaddr_in)))
+    }
+}
+
+#[cfg(feature = "net")]
+impl From<net::SocketAddrV4> for SockaddrIn {
+    fn from(addr: net::SocketAddrV4) -> Self {
+        Self(libc::sockaddr_in{
+            #[cfg(any(target_os = "dragonfly", target_os = "freebsd",
+                      target_os = "haiku", target_os = "hermit",
+                      target_os = "ios", target_os = "macos",
+                      target_os = "netbsd", target_os = "openbsd"))]
+            sin_len: mem::size_of::<libc::sockaddr_in>() as u8,
+            sin_family: AddressFamily::Inet as sa_family_t,
+            sin_port: addr.port().to_be(),  // network byte order
+            sin_addr: Ipv4Addr::from_std(addr.ip()).0,
+            .. unsafe { mem::zeroed() }
+        })
     }
 }
 
@@ -1924,38 +1946,31 @@ pub mod vsock {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(any(target_os = "android",
-              target_os = "dragonfly",
-              target_os = "freebsd",
-              target_os = "ios",
-              target_os = "linux",
+    #[cfg(any(target_os = "ios",
               target_os = "macos",
-              target_os = "netbsd",
-              target_os = "illumos",
-              target_os = "openbsd"))]
-    use super::*;
-    use super::super::socklen_t;
+              target_os = "illumos"
+              ))]
+    use super::{*, super::socklen_t};
 
-    #[cfg(any(target_os = "dragonfly",
-              target_os = "freebsd",
-              target_os = "ios",
-              target_os = "macos",
-              target_os = "netbsd",
-              target_os = "openbsd"))]
+    #[cfg(any(target_os = "ios",
+              target_os = "macos"
+              ))]
     #[test]
     fn test_macos_loopback_datalink_addr() {
         let bytes = [20i8, 18, 1, 0, 24, 3, 0, 0, 108, 111, 48, 0, 0, 0, 0, 0];
         let sa = bytes.as_ptr() as *const libc::sockaddr;
-        let _sock_addr = unsafe { SockAddr::from_libc_sockaddr(sa) };
-        assert!(_sock_addr.is_none());
+        let len = Some(bytes.len() as socklen_t);
+        let sock_addr = unsafe { SockaddrStorage::from_raw(sa, len) };
+        assert_eq!(sock_addr.family(), Some(AddressFamily::Link));
+        match sock_addr.as_sockaddr_dl() {
+            Some(dl) => assert_eq!(dl.addr(), [48u8, 0, 9, 0, 0, 0]),
+            None => panic!("Can't unwrap sockaddr storage")
+        }
     }
 
-    #[cfg(any(target_os = "dragonfly",
-              target_os = "freebsd",
-              target_os = "ios",
-              target_os = "macos",
-              target_os = "netbsd",
-              target_os = "openbsd"))]
+    #[cfg(any(target_os = "ios",
+              target_os = "macos"
+              ))]
     #[test]
     fn test_macos_tap_datalink_addr() {
         let bytes = [20i8, 18, 7, 0, 6, 3, 6, 0, 101, 110, 48, 24, 101, -112, -35, 76, -80];
@@ -1963,7 +1978,7 @@ mod tests {
         let sa = ptr as *const libc::sockaddr;
         let len = Some(bytes.len() as socklen_t);
 
-        let sock_addr = SockaddrStorage::from_raw(sa, len).unwrap();
+        let sock_addr = unsafe { SockaddrStorage::from_raw(sa, len).unwrap() };
         assert_eq!(sock_addr.family(), Some(AddressFamily::Link));
         match sock_addr.as_sockaddr_dl() {
             Some(dl) => assert_eq!(dl.addr(), [24u8, 101, 144, 221, 76, 176]),

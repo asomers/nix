@@ -27,7 +27,7 @@ pub mod sockopt;
  *
  */
 
-pub use self::addr::{SockaddrLike, SockaddrStorage};
+pub use self::addr::{SockaddrIn, SockaddrLike, SockaddrStorage};
 
 #[cfg(not(any(target_os = "illumos", target_os = "solaris")))]
 #[allow(deprecated)]
