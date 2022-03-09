@@ -836,6 +836,12 @@ impl SockaddrLike for UnixAddr {
     }
 }
 
+impl AsRef<libc::sockaddr_un> for UnixAddr {
+    fn as_ref(&self) -> &libc::sockaddr_un {
+        &self.sun
+    }
+}
+
 #[cfg(any(target_os = "android", target_os = "linux"))]
 fn fmt_abstract(abs: &[u8], f: &mut fmt::Formatter) -> fmt::Result {
     use fmt::Write;
@@ -874,6 +880,9 @@ impl Hash for UnixAddr {
 }
 
 /// Anything that, in C, can be cast back and forth to `sockaddr`.
+///
+/// Most implementors also implement `AsRef<libc::XXX>` to access their
+/// inner type read-only.
 pub trait SockaddrLike: private::Sealed {
     /// Unsafe constructor from a variable length source
     ///
@@ -965,6 +974,12 @@ impl SockaddrLike for SockaddrIn {
     }
 }
 
+impl AsRef<libc::sockaddr_in> for SockaddrIn {
+    fn as_ref(&self) -> &libc::sockaddr_in {
+        &self.0
+    }
+}
+
 #[cfg(feature = "net")]
 impl From<net::SocketAddrV4> for SockaddrIn {
     fn from(addr: net::SocketAddrV4) -> Self {
@@ -1002,6 +1017,13 @@ impl SockaddrLike for SockaddrIn6 {
             return None;
         }
         Some(SockaddrIn6(*(addr as *const libc::sockaddr_in6)))
+    }
+}
+
+#[cfg(feature = "net")]
+impl AsRef<libc::sockaddr_in6> for SockaddrIn6 {
+    fn as_ref(&self) -> &libc::sockaddr_in6 {
+        &self.0
     }
 }
 
@@ -1471,6 +1493,12 @@ pub mod netlink {
         }
     }
 
+    impl AsRef<libc::sockaddr_nl> for NetlinkAddr {
+        fn as_ref(&self) -> &libc::sockaddr_nl {
+            &self.0
+        }
+    }
+
     impl fmt::Display for NetlinkAddr {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             write!(f, "pid: {} groups: {}", self.pid(), self.groups())
@@ -1504,6 +1532,12 @@ pub mod alg {
                 return None;
             }
             Some(AlgAddr(*(addr as *const libc::sockaddr_ctl)))
+        }
+    }
+
+    impl AsRef<libc::sockaddr_alg> for AlgAddr {
+        fn as_ref(&self) -> &libc::sockaddr_alg {
+            &self.0
         }
     }
 
@@ -1603,6 +1637,12 @@ pub mod sys_control {
                 return None;
             }
             Some(SysControlAddr(*(addr as *const libc::sockaddr_in6)))
+        }
+    }
+
+    impl AsRef<libc::sockaddr_ctl> for SysControlAddr {
+        fn as_ref(&self) -> &libc::sockaddr_ctl {
+            &self.0
         }
     }
 
@@ -1739,6 +1779,12 @@ mod datalink {
         }
     }
 
+    impl AsRef<libc::sockaddr_ll> for LinkAddr {
+        fn as_ref(&self) -> &libc::sockaddr_ll {
+            &self.0
+        }
+    }
+
     }
 }
 
@@ -1857,6 +1903,12 @@ mod datalink {
         }
     }
 
+    impl AsRef<libc::sockaddr_dl> for LinkAddr {
+        fn as_ref(&self) -> &libc::sockaddr_dl {
+            &self.0
+        }
+    }
+
     }
 }
 
@@ -1886,6 +1938,12 @@ pub mod vsock {
                 return None;
             }
             Some(VsockAddr(*(addr as *const libc::sockaddr_vm)))
+        }
+    }
+
+    impl AsRef<libc::sockaddr_vm> for VsockAddr {
+        fn as_ref(&self) -> &libc::sockaddr_vm {
+            &self.0
         }
     }
 
