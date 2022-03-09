@@ -1961,8 +1961,8 @@ pub fn setsockopt<O: SetSockOpt>(fd: RawFd, opt: O, val: &O::Val) -> Result<()> 
 /// [Further reading](https://pubs.opengroup.org/onlinepubs/9699919799/functions/getpeername.html)
 pub fn getpeername<T: SockaddrLike>(fd: RawFd) -> Result<T> {
     unsafe {
-        let mut addr = mem::MaybeUninit::uninit();
-        let mut len = mem::size_of::<sockaddr_storage>() as socklen_t;
+        let mut addr = mem::MaybeUninit::<T>::uninit();
+        let mut len = mem::size_of::<T>() as socklen_t;
 
         let ret = libc::getpeername(
             fd,
@@ -1972,7 +1972,8 @@ pub fn getpeername<T: SockaddrLike>(fd: RawFd) -> Result<T> {
 
         Errno::result(ret)?;
 
-        T::from_raw(&addr.assume_init(), Some(len)).ok_or(Errno::EINVAL)
+        let (p, len2) = addr.assume_init().as_ffi_pair();
+        T::from_raw(p, Some(len2)).ok_or(Errno::EINVAL)
     }
 }
 
