@@ -1,6 +1,5 @@
-use nix::sys::socket::{AddressFamily, InetAddr, SockAddr, SockaddrLike,
-    SockaddrStorage,
-    UnixAddr, getsockname, sockaddr, sockaddr_in6, sockaddr_storage_to_addr};
+use nix::sys::socket::{AddressFamily, InetAddr, SockaddrLike,
+    UnixAddr, getsockname, sockaddr, sockaddr_in6};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::mem::{self, MaybeUninit};
@@ -36,8 +35,11 @@ pub fn test_inetv4_addr_to_sock_addr() {
     assert_eq!(actual, inet);
 }
 
+#[allow(deprecated)]
 #[test]
 pub fn test_inetv4_addr_roundtrip_sockaddr_storage_to_addr() {
+    use nix::sys::socket::{SockAddr, sockaddr_storage_to_addr};
+
     let actual: net::SocketAddr = FromStr::from_str("127.0.0.1:3000").unwrap();
     let addr = InetAddr::from_std(&actual);
     let sockaddr = SockAddr::new_inet(addr);
@@ -117,8 +119,11 @@ pub fn test_timestamping() {
     assert!(std::time::Duration::from(diff).as_secs() < 60);
 }
 
+#[allow(deprecated)]
 #[test]
 pub fn test_inetv6_addr_roundtrip_sockaddr_storage_to_addr() {
+    use nix::sys::socket::{SockAddr, sockaddr_storage_to_addr};
+
     let port: u16 = 3000;
     let flowinfo: u32 = 1;
     let scope_id: u32 = 2;
