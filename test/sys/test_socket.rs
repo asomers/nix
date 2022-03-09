@@ -233,7 +233,10 @@ pub fn test_getsockname() {
                .expect("socket failed");
     let sockaddr = UnixAddr::new(&sockname).unwrap();
     bind(sock, &sockaddr).expect("bind failed");
-    assert_eq!(sockaddr, getsockname(sock).expect("getsockname failed"));
+    let x = getsockname(sock).expect("getsockname failed");
+    dbg!(&sockaddr, &x);
+    assert_eq!(sockaddr, x);
+    //assert_eq!(sockaddr, getsockname(sock).expect("getsockname failed"));
 }
 
 #[test]
@@ -1526,6 +1529,7 @@ pub fn test_recv_ipv6pktinfo() {
             SockFlag::empty(),
             None,
         ).expect("send socket failed");
+        dbg!(&sa);
         sendmsg(send, &iov, &[], MsgFlags::empty(), Some(&sa)).expect("sendmsg failed");
     }
 

@@ -43,6 +43,7 @@
 #![cfg_attr(docsrs, doc(cfg(all())))]
 #![allow(non_camel_case_types)]
 #![cfg_attr(test, deny(warnings))]
+//#![allow(deprecated)] // TODO: remove before committing.
 #![recursion_limit = "500"]
 #![deny(unused)]
 #![allow(unused_macros)]

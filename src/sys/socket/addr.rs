@@ -867,6 +867,8 @@ impl fmt::Display for UnixAddr {
 
 impl PartialEq for UnixAddr {
     fn eq(&self, other: &UnixAddr) -> bool {
+        let _x = self.kind();
+        let _y = other.kind();
         self.kind() == other.kind()
     }
 }

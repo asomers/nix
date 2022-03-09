@@ -1982,7 +1982,7 @@ pub fn getpeername<T: SockaddrLike>(fd: RawFd) -> Result<T> {
 pub fn getsockname<T: SockaddrLike>(fd: RawFd) -> Result<T> {
     unsafe {
         let mut addr = mem::MaybeUninit::uninit();
-        let mut len = mem::size_of::<sockaddr_storage>() as socklen_t;
+        let mut len = mem::size_of::<T>() as socklen_t;
 
         let ret = libc::getsockname(
             fd,
