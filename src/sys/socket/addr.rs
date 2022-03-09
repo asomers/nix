@@ -1215,6 +1215,7 @@ mod private {
     note = "use SockaddrLike or SockaddrStorage instead"
 )]
 #[non_exhaustive]
+// TODO: implement SockaddrLike
 pub enum SockAddr {
     #[cfg(feature = "net")]
     #[cfg_attr(docsrs, doc(cfg(feature = "net")))]

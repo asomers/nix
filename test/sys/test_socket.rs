@@ -499,9 +499,8 @@ mod recvfrom {
         const NUM_MESSAGES_SENT: usize = 2;
         const DATA: [u8; 2] = [1,2];
 
-        let std_sa = SocketAddr::from_str("127.0.0.1:6798").unwrap();
-        let inet_addr = InetAddr::from_std(&std_sa);
-        let sock_addr = SockAddr::new_inet(inet_addr);
+        let inet_addr = SocketAddrV4::from_str("127.0.0.1:6798").unwrap();
+        let sock_addr = SockaddrIn::from(inet_addr);
 
         let rsock = socket(AddressFamily::Inet,
             SockType::Datagram,
@@ -566,9 +565,8 @@ mod recvfrom {
         const NUM_MESSAGES_SENT: usize = 2;
         const DATA: [u8; 4] = [1,2,3,4];
 
-        let std_sa = SocketAddr::from_str("127.0.0.1:6799").unwrap();
-        let inet_addr = InetAddr::from_std(&std_sa);
-        let sock_addr = SockAddr::new_inet(inet_addr);
+        let inet_addr = SocketAddrV4::from_str("127.0.0.1:6799").unwrap();
+        let sock_addr = SockaddrIn::from(inet_addr);
 
         let rsock = socket(AddressFamily::Inet,
             SockType::Datagram,
@@ -633,7 +631,7 @@ pub fn test_recvmsg_ebadf() {
     let mut buf = [0u8; 5];
     let iov = [IoVec::from_mut_slice(&mut buf[..])];
     let fd = -1;    // Bad file descriptor
-    let r = recvmsg(fd, &iov, None, MsgFlags::empty());
+    let r = recvmsg::<SockaddrStorage>(fd, &iov, None, MsgFlags::empty());
     assert_eq!(r.err().unwrap(), Errno::EBADF);
 }
 
@@ -657,7 +655,7 @@ pub fn test_scm_rights() {
         let iov = [IoVec::from_slice(b"hello")];
         let fds = [r];
         let cmsg = ControlMessage::ScmRights(&fds);
-        assert_eq!(sendmsg(fd1, &iov, &[cmsg], MsgFlags::empty(), None).unwrap(), 5);
+        assert_eq!(sendmsg::<UnixAddr>(fd1, &iov, &[cmsg], MsgFlags::empty(), None).unwrap(), 5);
         close(r).unwrap();
         close(fd1).unwrap();
     }
@@ -666,7 +664,7 @@ pub fn test_scm_rights() {
         let mut buf = [0u8; 5];
         let iov = [IoVec::from_mut_slice(&mut buf[..])];
         let mut cmsgspace = cmsg_space!([RawFd; 1]);
-        let msg = recvmsg(fd2, &iov, Some(&mut cmsgspace), MsgFlags::empty()).unwrap();
+        let msg = recvmsg::<UnixAddr>(fd2, &iov, Some(&mut cmsgspace), MsgFlags::empty()).unwrap();
 
         for cmsg in msg.cmsgs() {
             if let ControlMessageOwned::ScmRights(fd) = cmsg {
@@ -933,7 +931,7 @@ pub fn test_sendmsg_ipv6packetinfo() {
     use nix::errno::Errno;
     use nix::sys::uio::IoVec;
     use nix::sys::socket::{socket, sendmsg, bind,
-                           AddressFamily, SockType, SockFlag, SockAddr,
+                           AddressFamily, SockType, SockFlag, SockaddrIn6,
                            ControlMessage, MsgFlags};
 
     let sock = socket(AddressFamily::Inet6,
@@ -944,7 +942,7 @@ pub fn test_sendmsg_ipv6packetinfo() {
 
     let std_sa = SocketAddr::from_str("[::1]:6000").unwrap();
     let inet_addr = InetAddr::from_std(&std_sa);
-    let sock_addr = SockAddr::new_inet(inet_addr);
+    let sock_addr = SockaddrIn6::from(inet_addr);
 
     if let Err(Errno::EADDRNOTAVAIL) = bind(sock, &sock_addr) {
         println!("IPv6 not available, skipping test.");
@@ -962,7 +960,7 @@ pub fn test_sendmsg_ipv6packetinfo() {
 
         let cmsg = [ControlMessage::Ipv6PacketInfo(&pi)];
 
-        sendmsg(sock, &iov, &cmsg, MsgFlags::empty(), Some(&sock_addr))
+        sendmsg::<SockaddrIn6>(sock, &iov, &cmsg, MsgFlags::empty(), Some(&sock_addr))
             .expect("sendmsg");
     } else {
         println!("No IPv6 addresses available for testing: skipping testing Ipv6PacketInfo");
@@ -987,7 +985,7 @@ fn test_scm_rights_single_cmsg_multiple_fds() {
         let mut buf = [0u8; 8];
         let iovec = [IoVec::from_mut_slice(&mut buf)];
         let mut space = cmsg_space!([RawFd; 2]);
-        let msg = recvmsg(
+        let msg = recvmsg::<UnixAddr>(
             receive.as_raw_fd(),
             &iovec,
             Some(&mut space),
@@ -1014,7 +1012,7 @@ fn test_scm_rights_single_cmsg_multiple_fds() {
     let iov = [IoVec::from_slice(&slice)];
     let fds = [libc::STDIN_FILENO, libc::STDOUT_FILENO];    // pass stdin and stdout
     let cmsg = [ControlMessage::ScmRights(&fds)];
-    sendmsg(send.as_raw_fd(), &iov, &cmsg, MsgFlags::empty(), None).unwrap();
+    sendmsg::<UnixAddr>(send.as_raw_fd(), &iov, &cmsg, MsgFlags::empty(), None).unwrap();
     thread.join().unwrap();
 }
 
@@ -1034,7 +1032,7 @@ pub fn test_sendmsg_empty_cmsgs() {
 
     {
         let iov = [IoVec::from_slice(b"hello")];
-        assert_eq!(sendmsg(fd1, &iov, &[], MsgFlags::empty(), None).unwrap(), 5);
+        assert_eq!(sendmsg::<UnixAddr>(fd1, &iov, &[], MsgFlags::empty(), None).unwrap(), 5);
         close(fd1).unwrap();
     }
 
@@ -1042,7 +1040,7 @@ pub fn test_sendmsg_empty_cmsgs() {
         let mut buf = [0u8; 5];
         let iov = [IoVec::from_mut_slice(&mut buf[..])];
         let mut cmsgspace = cmsg_space!([RawFd; 1]);
-        let msg = recvmsg(fd2, &iov, Some(&mut cmsgspace), MsgFlags::empty()).unwrap();
+        let msg = recvmsg::<UnixAddr>(fd2, &iov, Some(&mut cmsgspace), MsgFlags::empty()).unwrap();
 
         for _ in msg.cmsgs() {
             panic!("unexpected cmsg");
@@ -1083,7 +1081,7 @@ fn test_scm_credentials() {
         let cmsg = ControlMessage::ScmCredentials(&cred);
         #[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
         let cmsg = ControlMessage::ScmCreds;
-        assert_eq!(sendmsg(send, &iov, &[cmsg], MsgFlags::empty(), None).unwrap(), 5);
+        assert_eq!(sendmsg::<UnixAddr>(send, &iov, &[cmsg], MsgFlags::empty(), None).unwrap(), 5);
         close(send).unwrap();
     }
 
@@ -1091,7 +1089,7 @@ fn test_scm_credentials() {
         let mut buf = [0u8; 5];
         let iov = [IoVec::from_mut_slice(&mut buf[..])];
         let mut cmsgspace = cmsg_space!(UnixCredentials);
-        let msg = recvmsg(recv, &iov, Some(&mut cmsgspace), MsgFlags::empty()).unwrap();
+        let msg = recvmsg::<UnixAddr>(recv, &iov, Some(&mut cmsgspace), MsgFlags::empty()).unwrap();
         let mut received_cred = None;
 
         for cmsg in msg.cmsgs() {
@@ -1218,7 +1216,7 @@ fn test_impl_scm_credentials_and_rights(mut space: Vec<u8>) {
 #[test]
 pub fn test_unixdomain() {
     use nix::sys::socket::{SockType, SockFlag};
-    use nix::sys::socket::{bind, socket, connect, listen, accept, SockAddr};
+    use nix::sys::socket::{bind, socket, connect, listen, accept, UnixAddr};
     use nix::unistd::{read, write, close};
     use std::thread;
 
@@ -1226,7 +1224,7 @@ pub fn test_unixdomain() {
     let sockname = tempdir.path().join("sock");
     let s1 = socket(AddressFamily::Unix, SockType::Stream,
                     SockFlag::empty(), None).expect("socket failed");
-    let sockaddr = SockAddr::new_unix(&sockname).unwrap();
+    let sockaddr = UnixAddr::new(&sockname).unwrap();
     bind(s1, &sockaddr).expect("bind failed");
     listen(s1, 10).expect("listen failed");
 
@@ -1422,7 +1420,7 @@ pub fn test_recv_ipv4pktinfo() {
 pub fn test_recvif() {
     use nix::net::if_::*;
     use nix::sys::socket::sockopt::{Ipv4RecvIf, Ipv4RecvDstAddr};
-    use nix::sys::socket::{bind, SockFlag, SockType};
+    use nix::sys::socket::{bind, SockaddrIn, SockFlag, SockType};
     use nix::sys::socket::{getsockname, setsockopt, socket, SockAddr};
     use nix::sys::socket::{recvmsg, sendmsg, ControlMessageOwned, MsgFlags};
     use nix::sys::uio::IoVec;
@@ -1440,7 +1438,7 @@ pub fn test_recvif() {
         None,
     ).expect("receive socket failed");
     bind(receive, &lo).expect("bind failed");
-    let sa = getsockname(receive).expect("getsockname failed");
+    let sa: SockaddrIn = getsockname(receive).expect("getsockname failed");
     setsockopt(receive, Ipv4RecvIf, &true).expect("setsockopt IP_RECVIF failed");
     setsockopt(receive, Ipv4RecvDstAddr, &true).expect("setsockopt IP_RECVDSTADDR failed");
 
@@ -1461,7 +1459,7 @@ pub fn test_recvif() {
         let mut buf = [0u8; 8];
         let iovec = [IoVec::from_mut_slice(&mut buf)];
         let mut space = cmsg_space!(libc::sockaddr_dl, libc::in_addr);
-        let msg = recvmsg(
+        let msg = recvmsg::<SockaddrIn>(
             receive,
             &iovec,
             Some(&mut space),
@@ -1490,11 +1488,11 @@ pub fn test_recvif() {
                 },
                 ControlMessageOwned::Ipv4RecvDstAddr(addr) => {
                     rx_recvdstaddr = true;
-                    if let SockAddr::Inet(InetAddr::V4(a)) = lo {
-                        assert_eq!(a.sin_addr.s_addr,
+                    if let Some(sin) = lo.as_sockaddr_in() {
+                        assert_eq!(sin.as_ref().sin_addr.s_addr,
                                    addr.s_addr,
                                    "unexpected destination address (expected {}, got {})",
-                                   a.sin_addr.s_addr,
+                                   sin.as_ref().sin_addr.s_addr,
                                    addr.s_addr);
                     } else {
                         panic!("unexpected Sockaddr");
@@ -1535,7 +1533,7 @@ pub fn test_recvif() {
 pub fn test_recv_ipv6pktinfo() {
     use nix::net::if_::*;
     use nix::sys::socket::sockopt::Ipv6RecvPacketInfo;
-    use nix::sys::socket::{bind, SockFlag, SockType};
+    use nix::sys::socket::{bind, SockaddrIn6, SockFlag, SockType};
     use nix::sys::socket::{getsockname, setsockopt, socket};
     use nix::sys::socket::{recvmsg, sendmsg, ControlMessageOwned, MsgFlags};
     use nix::sys::uio::IoVec;
@@ -1553,7 +1551,7 @@ pub fn test_recv_ipv6pktinfo() {
         None,
     ).expect("receive socket failed");
     bind(receive, &lo).expect("bind failed");
-    let sa = getsockname(receive).expect("getsockname failed");
+    let sa: SockaddrIn6 = getsockname(receive).expect("getsockname failed");
     setsockopt(receive, Ipv6RecvPacketInfo, &true).expect("setsockopt failed");
 
     {
