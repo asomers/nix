@@ -30,6 +30,7 @@ pub mod sockopt;
 pub use self::addr::{SockaddrLike, SockaddrStorage};
 
 #[cfg(not(any(target_os = "illumos", target_os = "solaris")))]
+#[allow(deprecated)]
 pub use self::addr::{
     AddressFamily,
     SockAddr,
