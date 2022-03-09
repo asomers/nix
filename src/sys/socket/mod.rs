@@ -553,15 +553,15 @@ macro_rules! cmsg_space {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct RecvMsg<'a> {
+pub struct RecvMsg<'a, S> {
     pub bytes: usize,
     cmsghdr: Option<&'a cmsghdr>,
-    pub address: Option<SockAddr>,
+    pub address: Option<S>,
     pub flags: MsgFlags,
     mhdr: msghdr,
 }
 
-impl<'a> RecvMsg<'a> {
+impl<'a, S> RecvMsg<'a, S> {
     /// Iterate over the valid control messages pointed to by this
     /// msghdr.
     pub fn cmsgs(&self) -> CmsgIterator {
@@ -1337,8 +1337,9 @@ impl<'a> ControlMessage<'a> {
 /// as with sendto.
 ///
 /// Allocates if cmsgs is nonempty.
-pub fn sendmsg(fd: RawFd, iov: &[IoVec<&[u8]>], cmsgs: &[ControlMessage],
-               flags: MsgFlags, addr: Option<&SockAddr>) -> Result<usize>
+pub fn sendmsg<S>(fd: RawFd, iov: &[IoVec<&[u8]>], cmsgs: &[ControlMessage],
+               flags: MsgFlags, addr: Option<&S>) -> Result<usize>
+    where S: SockaddrLike
 {
     let capacity = cmsgs.iter().map(|c| c.space()).sum();
 
@@ -1360,14 +1361,15 @@ pub fn sendmsg(fd: RawFd, iov: &[IoVec<&[u8]>], cmsgs: &[ControlMessage],
     target_os = "netbsd",
 ))]
 #[derive(Debug)]
-pub struct SendMmsgData<'a, I, C>
+pub struct SendMmsgData<'a, I, C, S>
     where
         I: AsRef<[IoVec<&'a [u8]>]>,
-        C: AsRef<[ControlMessage<'a>]>
+        C: AsRef<[ControlMessage<'a>]>,
+        S: SockaddrLike + 'a
 {
     pub iov: I,
     pub cmsgs: C,
-    pub addr: Option<SockAddr>,
+    pub addr: Option<S>,
     pub _lt: std::marker::PhantomData<&'a I>,
 }
 
@@ -1394,14 +1396,15 @@ pub struct SendMmsgData<'a, I, C>
     target_os = "freebsd",
     target_os = "netbsd",
 ))]
-pub fn sendmmsg<'a, I, C>(
+pub fn sendmmsg<'a, I, C, S>(
     fd: RawFd,
-    data: impl std::iter::IntoIterator<Item=&'a SendMmsgData<'a, I, C>>,
+    data: impl std::iter::IntoIterator<Item=&'a SendMmsgData<'a, I, C, S>>,
     flags: MsgFlags
 ) -> Result<Vec<usize>>
     where
         I: AsRef<[IoVec<&'a [u8]>]> + 'a,
         C: AsRef<[ControlMessage<'a>]> + 'a,
+        S: SockaddrLike + 'a
 {
     let iter = data.into_iter();
 
@@ -1489,15 +1492,16 @@ pub struct RecvMmsgData<'a, I>
     target_os = "netbsd",
 ))]
 #[allow(clippy::needless_collect)]  // Complicated false positive
-pub fn recvmmsg<'a, I>(
+pub fn recvmmsg<'a, I, S>(
     fd: RawFd,
     data: impl std::iter::IntoIterator<Item=&'a mut RecvMmsgData<'a, I>,
         IntoIter=impl ExactSizeIterator + Iterator<Item=&'a mut RecvMmsgData<'a, I>>>,
     flags: MsgFlags,
     timeout: Option<crate::sys::time::TimeSpec>
-) -> Result<Vec<RecvMsg<'a>>>
+) -> Result<Vec<RecvMsg<'a, S>>>
     where
         I: AsRef<[IoVec<&'a mut [u8]>]> + 'a,
+        S: Copy + SockaddrLike + 'a
 {
     let iter = data.into_iter();
 
@@ -1559,13 +1563,15 @@ pub fn recvmmsg<'a, I>(
         .collect())
 }
 
-unsafe fn read_mhdr<'a, 'b>(
+unsafe fn read_mhdr<'a, 'b, S>(
     mhdr: msghdr,
     r: isize,
     msg_controllen: usize,
-    address: sockaddr_storage,
+    address: S,
     cmsg_buffer: &'a mut Option<&'b mut Vec<u8>>
-) -> RecvMsg<'b> {
+) -> RecvMsg<'b, S>
+    where S: SockaddrLike
+{
     let cmsghdr = {
         if mhdr.msg_controllen > 0 {
             // got control message(s)
@@ -1581,39 +1587,36 @@ unsafe fn read_mhdr<'a, 'b>(
         }.as_ref()
     };
 
-    let address = sockaddr_storage_to_addr(
-        &address ,
-         mhdr.msg_namelen as usize
-    ).ok();
-
     RecvMsg {
         bytes: r as usize,
         cmsghdr,
-        address,
+        address: Some(address),
         flags: MsgFlags::from_bits_truncate(mhdr.msg_flags),
         mhdr,
     }
 }
 
-unsafe fn pack_mhdr_to_receive<'a, I>(
+unsafe fn pack_mhdr_to_receive<'a, I, S>(
     iov: I,
     cmsg_buffer: &mut Option<&mut Vec<u8>>,
-    address: *mut sockaddr_storage,
+    address: *mut S,
 ) -> (usize, msghdr)
     where
         I: AsRef<[IoVec<&'a mut [u8]>]> + 'a,
+        S: SockaddrLike + 'a
 {
     let (msg_control, msg_controllen) = cmsg_buffer.as_mut()
         .map(|v| (v.as_mut_ptr(), v.capacity()))
         .unwrap_or((ptr::null_mut(), 0));
 
+    let (addrp, l) = (*address).as_ffi_pair();
     let mhdr = {
         // Musl's msghdr has private fields, so this is the only way to
         // initialize it.
         let mut mhdr = mem::MaybeUninit::<msghdr>::zeroed();
         let p = mhdr.as_mut_ptr();
-        (*p).msg_name = address as *mut c_void;
-        (*p).msg_namelen = mem::size_of::<sockaddr_storage>() as socklen_t;
+        (*p).msg_name = addrp as *mut c_void;
+        (*p).msg_namelen = l as socklen_t;
         (*p).msg_iov = iov.as_ref().as_ptr() as *mut iovec;
         (*p).msg_iovlen = iov.as_ref().len() as _;
         (*p).msg_control = msg_control as *mut c_void;
@@ -1625,24 +1628,26 @@ unsafe fn pack_mhdr_to_receive<'a, I>(
     (msg_controllen, mhdr)
 }
 
-fn pack_mhdr_to_send<'a, I, C>(
+fn pack_mhdr_to_send<'a, I, C, S>(
     cmsg_buffer: &mut [u8],
     iov: I,
     cmsgs: C,
-    addr: Option<&SockAddr>
+    addr: Option<&S>
 ) -> msghdr
     where
         I: AsRef<[IoVec<&'a [u8]>]>,
-        C: AsRef<[ControlMessage<'a>]>
+        C: AsRef<[ControlMessage<'a>]>,
+        S: SockaddrLike + 'a
 {
     let capacity = cmsg_buffer.len();
 
     // Next encode the sending address, if provided
     let (name, namelen) = match addr {
-        Some(addr) => {
-            let (x, y) = addr.as_ffi_pair();
-            (x as *const _, y)
-        },
+        Some(addr) => addr.as_ffi_pair(),
+        //Some(addr) => {
+            //let (x, y) = addr.as_ffi_pair();
+            //(x as *const _, y)
+        //},
         None => (ptr::null(), 0),
     };
 
@@ -1700,9 +1705,10 @@ fn pack_mhdr_to_send<'a, I, C>(
 ///
 /// # References
 /// [recvmsg(2)](https://pubs.opengroup.org/onlinepubs/9699919799/functions/recvmsg.html)
-pub fn recvmsg<'a>(fd: RawFd, iov: &[IoVec<&mut [u8]>],
+pub fn recvmsg<'a, S>(fd: RawFd, iov: &[IoVec<&mut [u8]>],
                    mut cmsg_buffer: Option<&'a mut Vec<u8>>,
-                   flags: MsgFlags) -> Result<RecvMsg<'a>>
+                   flags: MsgFlags) -> Result<RecvMsg<'a, S>>
+    where S: SockaddrLike + 'a
 {
     let mut address = mem::MaybeUninit::uninit();
 

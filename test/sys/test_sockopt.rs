@@ -74,7 +74,7 @@ fn test_so_buf() {
 fn test_so_tcp_maxseg() {
     use std::net::SocketAddrV4;
     use std::str::FromStr;
-    use nix::sys::socket::{accept, bind, connect, listen, InetAddr, SockaddrIn};
+    use nix::sys::socket::{accept, bind, connect, listen, SockaddrIn};
     use nix::unistd::{close, write};
 
     let std_sa = SocketAddrV4::from_str("127.0.0.1:4001").unwrap();
