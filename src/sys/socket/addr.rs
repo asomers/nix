@@ -986,20 +986,27 @@ impl SockaddrLike for SockaddrIn6 {
 #[derive(Clone, Copy, Eq)]
 #[repr(C)]
 pub union SockaddrStorage {
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[cfg_attr(docsrs, doc(cfg(all())))]
+    alg: AlgAddr,
     #[cfg(feature = "net")]
     #[cfg_attr(docsrs, doc(cfg(feature = "net")))]
     dl: LinkAddr,
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    nl: NetlinkAddr,
     sa: Sockaddr,
+    #[cfg(all(feature = "ioctl", any(target_os = "ios", target_os = "macos")))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "ioctl")))]
+    sctl: SysControlAddr,
     #[cfg(feature = "net")]
     sin: SockaddrIn,
     #[cfg(feature = "net")]
     sin6: SockaddrIn6,
     ss: libc::sockaddr_storage,
-    su: UnixAddr
-    // TODO Netlink
-    // TODO Alg
-    // TODO SysControl
-    // TODO: Vsock
+    su: UnixAddr,
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[cfg_attr(docsrs, doc(cfg(all())))]
+    vsock: VsockAddr
 }
 impl private::Sealed for SockaddrStorage {}
 impl SockaddrLike for SockaddrStorage {
@@ -1426,6 +1433,22 @@ pub mod netlink {
         }
     }
 
+    impl SockaddrLike for NetlinkAddr {
+        unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
+            -> Option<Self> where Self: Sized
+        {
+            if let Some(l) = len {
+                if l != mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t {
+                    return None;
+                }
+            }
+            if (*addr).sa_family as i32 != libc::AF_NETLINK as i32 {
+                return None;
+            }
+            Some(NetlinkAddr(*(addr as *const libc::sockaddr_in6)))
+        }
+    }
+
     impl fmt::Display for NetlinkAddr {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             write!(f, "pid: {} groups: {}", self.pid(), self.groups())
@@ -1444,6 +1467,23 @@ pub mod alg {
     #[derive(Copy, Clone)]
     #[repr(transparent)]
     pub struct AlgAddr(pub(in super::super) sockaddr_alg);
+
+    impl private::Sealed for AlgAddr {}
+    impl SockaddrLike for AlgAddr {
+        unsafe fn from_raw(addr: *const libc::sockaddr, l: Option<libc::socklen_t>)
+            -> Option<Self> where Self: Sized
+        {
+            if let Some(l) = len {
+                if l != mem::size_of::<libc::sockaddr_ctl>() as libc::socklen_t {
+                    return None;
+                }
+            }
+            if (*addr).sa_family as i32 != libc::AF_ALG as i32 {
+                return None;
+            }
+            Some(AlgAddr(*(addr as *const libc::sockaddr_ctl)))
+        }
+    }
 
     // , PartialEq, Eq, Debug, Hash
     impl PartialEq for AlgAddr {
@@ -1526,6 +1566,23 @@ pub mod sys_control {
     #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
     #[repr(transparent)]
     pub struct SysControlAddr(pub(in super::super) libc::sockaddr_ctl);
+
+    impl private::Sealed for SysControlAddr {}
+    impl SockaddrLike for SysControlAddr {
+        unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
+            -> Option<Self> where Self: Sized
+        {
+            if let Some(l) = len {
+                if l != mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t {
+                    return None;
+                }
+            }
+            if (*addr).sa_family as i32 != libc::AF_INET6 as i32 {
+                return None;
+            }
+            Some(SysControlAddr(*(addr as *const libc::sockaddr_in6)))
+        }
+    }
 
     impl SysControlAddr {
         pub const fn new(id: u32, unit: u32) -> SysControlAddr {
@@ -1792,6 +1849,23 @@ pub mod vsock {
     #[derive(Copy, Clone)]
     #[repr(transparent)]
     pub struct VsockAddr(pub(in super::super) sockaddr_vm);
+
+    impl private::Sealed for VsockAddr {}
+    impl SockaddrLike for VsockAddr {
+        unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
+            -> Option<Self> where Self: Sized
+        {
+            if let Some(l) = len {
+                if l != mem::size_of::<libc::sockaddr_vm>() as libc::socklen_t {
+                    return None;
+                }
+            }
+            if (*addr).sa_family as i32 != libc::AF_INET6 as i32 {
+                return None;
+            }
+            Some(VsockAddr(*(addr as *const libc::sockaddr_vm)))
+        }
+    }
 
     impl PartialEq for VsockAddr {
         fn eq(&self, other: &Self) -> bool {
