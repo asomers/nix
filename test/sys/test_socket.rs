@@ -1,8 +1,10 @@
-use nix::sys::socket::{AddressFamily, InetAddr, SockAddr, UnixAddr, getsockname, sockaddr, sockaddr_in6, sockaddr_storage_to_addr};
+use nix::sys::socket::{AddressFamily, InetAddr, SockAddr, SockaddrLike,
+    SockaddrStorage,
+    UnixAddr, getsockname, sockaddr, sockaddr_in6, sockaddr_storage_to_addr};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::mem::{self, MaybeUninit};
-use std::net::{self, Ipv6Addr, SocketAddr, SocketAddrV6};
+use std::net::{self, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::slice;
@@ -116,27 +118,6 @@ pub fn test_timestamping() {
 }
 
 #[test]
-pub fn test_inetv6_addr_to_sock_addr() {
-    let port: u16 = 3000;
-    let flowinfo: u32 = 1;
-    let scope_id: u32 = 2;
-    let ip: Ipv6Addr = "fe80::1".parse().unwrap();
-
-    let actual = SocketAddr::V6(SocketAddrV6::new(ip, port, flowinfo, scope_id));
-    let addr = InetAddr::from_std(&actual);
-
-    match addr {
-        InetAddr::V6(addr) => {
-            assert_eq!(addr.sin6_port, port.to_be());
-            assert_eq!(addr.sin6_flowinfo, flowinfo);
-            assert_eq!(addr.sin6_scope_id, scope_id);
-        }
-        _ => panic!("nope"),
-    }
-
-    assert_eq!(actual, addr.to_std());
-}
-#[test]
 pub fn test_inetv6_addr_roundtrip_sockaddr_storage_to_addr() {
     let port: u16 = 3000;
     let flowinfo: u32 = 1;
@@ -244,13 +225,13 @@ pub fn test_abstract_uds_addr() {
 #[test]
 pub fn test_getsockname() {
     use nix::sys::socket::{socket, AddressFamily, SockType, SockFlag};
-    use nix::sys::socket::{bind, SockAddr};
+    use nix::sys::socket::bind;
 
     let tempdir = tempfile::tempdir().unwrap();
     let sockname = tempdir.path().join("sock");
     let sock = socket(AddressFamily::Unix, SockType::Stream, SockFlag::empty(), None)
                .expect("socket failed");
-    let sockaddr = SockAddr::new_unix(&sockname).unwrap();
+    let sockaddr = UnixAddr::new(&sockname).unwrap();
     bind(sock, &sockaddr).expect("bind failed");
     assert_eq!(sockaddr, getsockname(sock).expect("getsockname failed"));
 }
@@ -277,10 +258,10 @@ mod recvfrom {
 
     const MSG: &[u8] = b"Hello, World!";
 
-    fn sendrecv<Fs, Fr>(rsock: RawFd, ssock: RawFd, f_send: Fs, mut f_recv: Fr) -> Option<SockAddr>
+    fn sendrecv<Fs, Fr>(rsock: RawFd, ssock: RawFd, f_send: Fs, mut f_recv: Fr) -> Option<SockaddrStorage>
         where
             Fs: Fn(RawFd, &[u8], MsgFlags) -> Result<usize> + Send + 'static,
-            Fr: FnMut(usize, Option<SockAddr>),
+            Fr: FnMut(usize, Option<SockaddrStorage>),
     {
         let mut buf: [u8; 13] = [0u8; 13];
         let mut l = 0;
@@ -316,9 +297,8 @@ mod recvfrom {
 
     #[test]
     pub fn udp() {
-        let std_sa = SocketAddr::from_str("127.0.0.1:6789").unwrap();
-        let inet_addr = InetAddr::from_std(&std_sa);
-        let sock_addr = SockAddr::new_inet(inet_addr);
+        let std_sa = SocketAddrV4::from_str("127.0.0.1:6789").unwrap();
+        let sock_addr = SockaddrIn::from(std_sa);
         let rsock = socket(AddressFamily::Inet,
             SockType::Datagram,
             SockFlag::empty(),
@@ -335,7 +315,7 @@ mod recvfrom {
             sendto(s, m, &sock_addr, flags)
         },|_, _| {});
         // UDP sockets should set the from address
-        assert_eq!(AddressFamily::Inet, from.unwrap().family());
+        assert_eq!(AddressFamily::Inet, from.unwrap().family().unwrap());
     }
 
     #[cfg(target_os = "linux")]
@@ -429,12 +409,10 @@ mod recvfrom {
     pub fn udp_sendmmsg() {
         use nix::sys::uio::IoVec;
 
-        let std_sa = SocketAddr::from_str("127.0.0.1:6793").unwrap();
-        let std_sa2 = SocketAddr::from_str("127.0.0.1:6794").unwrap();
-        let inet_addr = InetAddr::from_std(&std_sa);
-        let inet_addr2 = InetAddr::from_std(&std_sa2);
-        let sock_addr = SockAddr::new_inet(inet_addr);
-        let sock_addr2 = SockAddr::new_inet(inet_addr2);
+        let std_sa = SocketAddrV4::from_str("127.0.0.1:6793").unwrap();
+        let std_sa2 = SocketAddrV4::from_str("127.0.0.1:6794").unwrap();
+        let sock_addr = SockaddrIn::from(std_sa);
+        let sock_addr2 = SockaddrIn::from(std_sa2);
 
         let rsock = socket(AddressFamily::Inet,
             SockType::Datagram,
@@ -482,7 +460,7 @@ mod recvfrom {
                 })
         }, |_, _ | {});
         // UDP sockets should set the from address
-        assert_eq!(AddressFamily::Inet, from.unwrap().family());
+        assert_eq!(AddressFamily::Inet, from.unwrap().family().unwrap());
     }
 
     #[cfg(any(
@@ -536,11 +514,11 @@ mod recvfrom {
             })
         };
 
-        let res = recvmmsg(rsock, &mut msgs, MsgFlags::empty(), None).expect("recvmmsg");
+        let res: Vec<RecvMsg<SockaddrIn>> = recvmmsg(rsock, &mut msgs, MsgFlags::empty(), None).expect("recvmmsg");
         assert_eq!(res.len(), DATA.len());
 
         for RecvMsg { address, bytes, .. } in res.into_iter() {
-            assert_eq!(AddressFamily::Inet, address.unwrap().family());
+            assert_eq!(AddressFamily::Inet, address.unwrap().family().unwrap());
             assert_eq!(DATA.len(), bytes);
         }
 
@@ -607,11 +585,11 @@ mod recvfrom {
             })
         };
 
-        let res = recvmmsg(rsock, &mut msgs, MsgFlags::MSG_DONTWAIT, None).expect("recvmmsg");
+        let res: Vec<RecvMsg<SockaddrIn>> = recvmmsg(rsock, &mut msgs, MsgFlags::MSG_DONTWAIT, None).expect("recvmmsg");
         assert_eq!(res.len(), NUM_MESSAGES_SENT);
 
         for RecvMsg { address, bytes, .. } in res.into_iter() {
-            assert_eq!(AddressFamily::Inet, address.unwrap().family());
+            assert_eq!(AddressFamily::Inet, address.unwrap().family().unwrap());
             assert_eq!(DATA.len(), bytes);
         }
 
@@ -625,7 +603,7 @@ mod recvfrom {
 #[test]
 pub fn test_recvmsg_ebadf() {
     use nix::errno::Errno;
-    use nix::sys::socket::{MsgFlags, recvmsg};
+    use nix::sys::socket::{MsgFlags, SockaddrStorage, recvmsg};
     use nix::sys::uio::IoVec;
 
     let mut buf = [0u8; 5];
@@ -940,9 +918,9 @@ pub fn test_sendmsg_ipv6packetinfo() {
                       None)
         .expect("socket failed");
 
-    let std_sa = SocketAddr::from_str("[::1]:6000").unwrap();
-    let inet_addr = InetAddr::from_std(&std_sa);
-    let sock_addr = SockaddrIn6::from(inet_addr);
+    let std_sa = SocketAddrV6::from_str("[::1]:6000").unwrap();
+    //let inet_addr = InetAddr::from_std(&std_sa);
+    let sock_addr: SockaddrIn6 = SockaddrIn6::from(std_sa);
 
     if let Err(Errno::EADDRNOTAVAIL) = bind(sock, &sock_addr) {
         println!("IPv6 not available, skipping test.");
@@ -952,19 +930,15 @@ pub fn test_sendmsg_ipv6packetinfo() {
     let slice = [1u8, 2, 3, 4, 5, 6, 7, 8];
     let iov = [IoVec::from_slice(&slice)];
 
-    if let InetAddr::V6(sin) = inet_addr {
-        let pi = libc::in6_pktinfo {
-            ipi6_ifindex: 0, /* Unspecified interface */
-            ipi6_addr: sin.sin6_addr,
-        };
+    let pi = libc::in6_pktinfo {
+        ipi6_ifindex: 0, /* Unspecified interface */
+        ipi6_addr: sock_addr.as_ref().sin6_addr,
+    };
 
-        let cmsg = [ControlMessage::Ipv6PacketInfo(&pi)];
+    let cmsg = [ControlMessage::Ipv6PacketInfo(&pi)];
 
-        sendmsg::<SockaddrIn6>(sock, &iov, &cmsg, MsgFlags::empty(), Some(&sock_addr))
-            .expect("sendmsg");
-    } else {
-        println!("No IPv6 addresses available for testing: skipping testing Ipv6PacketInfo");
-    }
+    sendmsg::<SockaddrIn6>(sock, &iov, &cmsg, MsgFlags::empty(), Some(&sock_addr))
+        .expect("sendmsg");
 }
 
 /// Tests that passing multiple fds using a single `ControlMessage` works.
@@ -1291,20 +1265,8 @@ fn loopback_address(family: AddressFamily) -> Option<nix::ifaddrs::InterfaceAddr
     // return first address matching family
     for ifaddr in addrs {
         if ifaddr.flags.contains(InterfaceFlags::IFF_LOOPBACK) {
-            match ifaddr.address {
-                Some(SockAddr::Inet(InetAddr::V4(..))) => {
-                    match family {
-                        AddressFamily::Inet => return Some(ifaddr),
-                        _ => continue
-                    }
-                },
-                Some(SockAddr::Inet(InetAddr::V6(..))) => {
-                    match family {
-                        AddressFamily::Inet6 => return Some(ifaddr),
-                        _ => continue
-                    }
-                },
-                _ => continue,
+            if ifaddr.address.as_ref().map(SockaddrLike::family).flatten() == Some(family) {
+                return Some(ifaddr)
             }
         }
     }
@@ -1421,7 +1383,7 @@ pub fn test_recvif() {
     use nix::net::if_::*;
     use nix::sys::socket::sockopt::{Ipv4RecvIf, Ipv4RecvDstAddr};
     use nix::sys::socket::{bind, SockaddrIn, SockFlag, SockType};
-    use nix::sys::socket::{getsockname, setsockopt, socket, SockAddr};
+    use nix::sys::socket::{getsockname, setsockopt, socket};
     use nix::sys::socket::{recvmsg, sendmsg, ControlMessageOwned, MsgFlags};
     use nix::sys::uio::IoVec;
 
@@ -1571,7 +1533,7 @@ pub fn test_recv_ipv6pktinfo() {
         let mut buf = [0u8; 8];
         let iovec = [IoVec::from_mut_slice(&mut buf)];
         let mut space = cmsg_space!(libc::in6_pktinfo);
-        let msg = recvmsg(
+        let msg = recvmsg::<SockaddrIn6>(
             receive,
             &iovec,
             Some(&mut space),
