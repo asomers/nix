@@ -998,6 +998,15 @@ impl From<net::SocketAddrV4> for SockaddrIn {
 }
 
 #[cfg(feature = "net")]
+impl std::str::FromStr for SockaddrIn {
+    type Err = std::net::AddrParseError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        std::net::SocketAddrV4::from_str(s).map(SockaddrIn::from)
+    }
+}
+
+#[cfg(feature = "net")]
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct SockaddrIn6(libc::sockaddr_in6);

@@ -638,6 +638,7 @@ pub enum ControlMessageOwned {
     /// # use nix::sys::uio::IoVec;
     /// # use nix::sys::time::*;
     /// # use std::time::*;
+    /// # use std::str::FromStr;
     /// # fn main() {
     /// // Set up
     /// let message = "Ohayō!".as_bytes();
@@ -647,9 +648,9 @@ pub enum ControlMessageOwned {
     ///     SockFlag::empty(),
     ///     None).unwrap();
     /// setsockopt(in_socket, sockopt::ReceiveTimestamp, &true).unwrap();
-    /// let localhost = InetAddr::new(IpAddr::new_v4(127, 0, 0, 1), 0);
-    /// bind(in_socket, &SockAddr::new_inet(localhost)).unwrap();
-    /// let address = getsockname(in_socket).unwrap();
+    /// let localhost = SockaddrIn::from_str("127.0.0.1:0").unwrap();
+    /// bind(in_socket, &localhost);
+    /// let address: SockaddrIn = getsockname(in_socket).unwrap();
     /// // Get initial time
     /// let time0 = SystemTime::now();
     /// // Send the message
@@ -661,7 +662,8 @@ pub enum ControlMessageOwned {
     /// let mut buffer = vec![0u8; message.len()];
     /// let mut cmsgspace = cmsg_space!(TimeVal);
     /// let iov = [IoVec::from_mut_slice(&mut buffer)];
-    /// let r = recvmsg(in_socket, &iov, Some(&mut cmsgspace), flags).unwrap();
+    /// let r = recvmsg::<SockaddrIn>(in_socket, &iov, Some(&mut cmsgspace), flags)
+    ///     .unwrap();
     /// let rtime = match r.cmsgs().next() {
     ///     Some(ControlMessageOwned::ScmTimestamp(rtime)) => rtime,
     ///     Some(_) => panic!("Unexpected control message"),
