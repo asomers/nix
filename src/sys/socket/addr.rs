@@ -1930,7 +1930,7 @@ pub mod sys_control {
 mod datalink {
     feature! {
     #![feature = "net"]
-    use super::{fmt, mem, private, AddressFamily, SockaddrLike};
+    use super::{fmt, mem, private, SockaddrLike};
 
     /// Hardware Address
     #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -1938,12 +1938,6 @@ mod datalink {
     pub struct LinkAddr(pub(in super::super) libc::sockaddr_ll);
 
     impl LinkAddr {
-        /// Always AF_PACKET
-        pub fn family(&self) -> AddressFamily {
-            assert_eq!(self.0.sll_family as i32, libc::AF_PACKET);
-            AddressFamily::Packet
-        }
-
         /// Physical-layer protocol
         pub fn protocol(&self) -> u16 {
             self.0.sll_protocol
@@ -2032,7 +2026,7 @@ mod datalink {
 mod datalink {
     feature! {
     #![feature = "net"]
-    use super::{fmt, mem, private, AddressFamily, SockaddrLike};
+    use super::{fmt, mem, private, SockaddrLike};
 
     /// Hardware Address
     #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -2045,12 +2039,6 @@ mod datalink {
         #[cfg_attr(docsrs, doc(cfg(all())))]
         pub fn len(&self) -> usize {
             self.0.sdl_len as usize
-        }
-
-        /// always == AF_LINK
-        pub fn family(&self) -> AddressFamily {
-            assert_eq!(i32::from(self.0.sdl_family), libc::AF_LINK);
-            AddressFamily::Link
         }
 
         /// interface index, if != 0, system given index for interface
