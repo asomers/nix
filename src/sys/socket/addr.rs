@@ -963,6 +963,7 @@ impl SockaddrLike for Sockaddr {
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct SockaddrIn(libc::sockaddr_in);
+
 #[cfg(feature = "net")]
 impl private::Sealed for SockaddrIn {}
 #[cfg(feature = "net")]
@@ -982,9 +983,24 @@ impl SockaddrLike for SockaddrIn {
     }
 }
 
+#[cfg(feature = "net")]
 impl AsRef<libc::sockaddr_in> for SockaddrIn {
     fn as_ref(&self) -> &libc::sockaddr_in {
         &self.0
+    }
+}
+
+#[cfg(feature = "net")]
+impl fmt::Display for SockaddrIn {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let ne = u32::from_be(self.0.sin_addr.s_addr);
+        let port = u16::from_be(self.0.sin_port);
+        write!(f, "{}.{}.{}.{}:{}",
+               ne >> 24,
+               (ne >> 16) & 0xFF,
+               (ne >> 8) & 0xFF,
+               ne & 0xFF,
+               port)
     }
 }
 
@@ -2048,7 +2064,9 @@ mod tests {
               target_os = "macos",
               target_os = "illumos"
               ))]
-    use super::{*, super::socklen_t};
+    use super::super::socklen_t;
+    use super::*;
+    use std::str::FromStr;
 
     #[cfg(any(target_os = "ios",
               target_os = "macos"
@@ -2115,5 +2133,12 @@ mod tests {
         let sun_path1 = unsafe { &(*addr.as_ptr()).sun_path[..addr.path_len()] };
         let sun_path2 = [0, 110, 105, 120, 0, 97, 98, 115, 116, 114, 97, 99, 116, 0, 116, 101, 115, 116];
         assert_eq!(sun_path1, sun_path2);
+    }
+
+    #[test]
+    fn test_sockaddrin_display() {
+        let s = "127.0.0.1:8080";
+        let addr = SockaddrIn::from_str(s).unwrap();
+        assert_eq!(s, format!("{}", addr));
     }
 }
