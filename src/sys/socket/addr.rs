@@ -959,6 +959,10 @@ impl SockaddrLike for Sockaddr {
     }
 }
 
+/// An IPv4 socket address
+// This is identical to std::net::SocketAddrV4.  But the standard library
+// doesn't allow direct access to the libc fields, which we need.  So we
+// reimplement it here.
 #[cfg(feature = "net")]
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
