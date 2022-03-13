@@ -1410,6 +1410,8 @@ impl PartialEq for SockaddrStorage {
     fn eq(&self, other: &Self) -> bool {
         unsafe {
             match (self.sa.0.sa_family as i32, other.sa.0.sa_family as i32) {
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                (libc::AF_ALG, libc::AF_ALG) => self.alg == other.alg,
                 (libc::AF_INET, libc::AF_INET) => self.sin == other.sin,
                 (libc::AF_INET6, libc::AF_INET6) => self.sin6 == other.sin6,
                 #[cfg(any(target_os = "dragonfly",
@@ -1420,13 +1422,19 @@ impl PartialEq for SockaddrStorage {
                           target_os = "netbsd",
                           target_os = "openbsd"))]
                 (libc::AF_LINK, libc::AF_LINK) => self.dl == other.dl,
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                (libc::AF_NETLINK, libc::AF_NETLINK) => self.nl == other.nl,
                 #[cfg(any(target_os = "android",
                           target_os = "fuchsia",
                           target_os = "linux"
                 ))]
                 (libc::AF_PACKET, libc::AF_PACKET) => self.dl == other.dl,
+                #[cfg(any(target_os = "ios", target_os = "macos"))]
+                (libc::AF_SYSTEM, libc::AF_SYSTEM) => self.sctl == other.sctl,
+                (libc::AF_UNIX, libc::AF_UNIX) => self.su == other.su,
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                (libc::AF_VSOCK, libc::AF_VSOCK) => self.vsock == other.vsock,
                 _ => false,
-                // TODO: other sockaddr types
             }
         }
     }
