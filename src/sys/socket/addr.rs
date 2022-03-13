@@ -2064,85 +2064,97 @@ pub mod vsock {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(any(target_os = "ios",
-              target_os = "macos",
-              target_os = "illumos"
-              ))]
-    use super::super::socklen_t;
     use super::*;
-    use std::str::FromStr;
 
-    #[cfg(any(target_os = "ios",
-              target_os = "macos"
-              ))]
-    #[test]
-    fn test_macos_loopback_datalink_addr() {
-        let bytes = [20i8, 18, 1, 0, 24, 3, 0, 0, 108, 111, 48, 0, 0, 0, 0, 0];
-        let sa = bytes.as_ptr() as *const libc::sockaddr;
-        let len = Some(bytes.len() as socklen_t);
-        let sock_addr = unsafe { SockaddrStorage::from_raw(sa, len) };
-        assert_eq!(sock_addr.family(), Some(AddressFamily::Link));
-        match sock_addr.as_sockaddr_dl() {
-            Some(dl) => assert_eq!(dl.addr(), [48u8, 0, 9, 0, 0, 0]),
-            None => panic!("Can't unwrap sockaddr storage")
+    mod link {
+        #[cfg(any(target_os = "ios",
+                  target_os = "macos",
+                  target_os = "illumos"
+                  ))]
+        use super::{*, super::socklen_t};
+        #[cfg(any(target_os = "ios",
+                  target_os = "macos"
+                  ))]
+        #[test]
+        fn macos_loopback() {
+            let bytes = [20i8, 18, 1, 0, 24, 3, 0, 0, 108, 111, 48, 0, 0, 0, 0, 0];
+            let sa = bytes.as_ptr() as *const libc::sockaddr;
+            let len = Some(bytes.len() as socklen_t);
+            let sock_addr = unsafe { SockaddrStorage::from_raw(sa, len) };
+            assert_eq!(sock_addr.family(), Some(AddressFamily::Link));
+            match sock_addr.as_sockaddr_dl() {
+                Some(dl) => assert_eq!(dl.addr(), [48u8, 0, 9, 0, 0, 0]),
+                None => panic!("Can't unwrap sockaddr storage")
+            }
+        }
+
+        #[cfg(any(target_os = "ios",
+                  target_os = "macos"
+                  ))]
+        #[test]
+        fn macos_tap() {
+            let bytes = [20i8, 18, 7, 0, 6, 3, 6, 0, 101, 110, 48, 24, 101, -112, -35, 76, -80];
+            let ptr = bytes.as_ptr();
+            let sa = ptr as *const libc::sockaddr;
+            let len = Some(bytes.len() as socklen_t);
+
+            let sock_addr = unsafe { SockaddrStorage::from_raw(sa, len).unwrap() };
+            assert_eq!(sock_addr.family(), Some(AddressFamily::Link));
+            match sock_addr.as_sockaddr_dl() {
+                Some(dl) => assert_eq!(dl.addr(), [24u8, 101, 144, 221, 76, 176]),
+                None => panic!("Can't unwrap sockaddr storage")
+            }
+        }
+
+        #[cfg(target_os = "illumos")]
+        #[test]
+        fn illumos_tap() {
+            let bytes = [25u8, 0, 0, 0, 6, 0, 6, 0, 24, 101, 144, 221, 76, 176];
+            let ptr = bytes.as_ptr();
+            let sa = ptr as *const libc::sockaddr;
+            let _sock_addr = unsafe { SockAddr::from_libc_sockaddr(sa) };
+
+            assert!(_sock_addr.is_some());
+
+            let sock_addr = _sock_addr.unwrap();
+
+            assert_eq!(sock_addr.family(), AddressFamily::Link);
+
+            match sock_addr {
+                SockAddr::Link(ether_addr) => {
+                    assert_eq!(ether_addr.addr(), [24u8, 101, 144, 221, 76, 176]);
+                },
+                _ => { unreachable!() }
+            };
         }
     }
 
-    #[cfg(any(target_os = "ios",
-              target_os = "macos"
-              ))]
-    #[test]
-    fn test_macos_tap_datalink_addr() {
-        let bytes = [20i8, 18, 7, 0, 6, 3, 6, 0, 101, 110, 48, 24, 101, -112, -35, 76, -80];
-        let ptr = bytes.as_ptr();
-        let sa = ptr as *const libc::sockaddr;
-        let len = Some(bytes.len() as socklen_t);
+    mod sockaddr_in {
+        use super::*;
+        use std::str::FromStr;
 
-        let sock_addr = unsafe { SockaddrStorage::from_raw(sa, len).unwrap() };
-        assert_eq!(sock_addr.family(), Some(AddressFamily::Link));
-        match sock_addr.as_sockaddr_dl() {
-            Some(dl) => assert_eq!(dl.addr(), [24u8, 101, 144, 221, 76, 176]),
-            None => panic!("Can't unwrap sockaddr storage")
+        #[test]
+        fn display() {
+            let s = "127.0.0.1:8080";
+            let addr = SockaddrIn::from_str(s).unwrap();
+            assert_eq!(s, format!("{}", addr));
         }
     }
 
-    #[cfg(target_os = "illumos")]
-    #[test]
-    fn test_illumos_tap_datalink_addr() {
-        let bytes = [25u8, 0, 0, 0, 6, 0, 6, 0, 24, 101, 144, 221, 76, 176];
-        let ptr = bytes.as_ptr();
-        let sa = ptr as *const libc::sockaddr;
-        let _sock_addr = unsafe { SockAddr::from_libc_sockaddr(sa) };
+    mod unixaddr {
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        use super::*;
 
-        assert!(_sock_addr.is_some());
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        #[test]
+        fn abstract_sun_path() {
+            let name = String::from("nix\0abstract\0test");
+            let addr = UnixAddr::new_abstract(name.as_bytes()).unwrap();
 
-        let sock_addr = _sock_addr.unwrap();
+            let sun_path1 = unsafe { &(*addr.as_ptr()).sun_path[..addr.path_len()] };
+            let sun_path2 = [0, 110, 105, 120, 0, 97, 98, 115, 116, 114, 97, 99, 116, 0, 116, 101, 115, 116];
+            assert_eq!(sun_path1, sun_path2);
+        }
 
-        assert_eq!(sock_addr.family(), AddressFamily::Link);
-
-        match sock_addr {
-            SockAddr::Link(ether_addr) => {
-                assert_eq!(ether_addr.addr(), [24u8, 101, 144, 221, 76, 176]);
-            },
-            _ => { unreachable!() }
-        };
-    }
-
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    #[test]
-    fn test_abstract_sun_path() {
-        let name = String::from("nix\0abstract\0test");
-        let addr = UnixAddr::new_abstract(name.as_bytes()).unwrap();
-
-        let sun_path1 = unsafe { &(*addr.as_ptr()).sun_path[..addr.path_len()] };
-        let sun_path2 = [0, 110, 105, 120, 0, 97, 98, 115, 116, 114, 97, 99, 116, 0, 116, 101, 115, 116];
-        assert_eq!(sun_path1, sun_path2);
-    }
-
-    #[test]
-    fn test_sockaddrin_display() {
-        let s = "127.0.0.1:8080";
-        let addr = SockaddrIn::from_str(s).unwrap();
-        assert_eq!(s, format!("{}", addr));
     }
 }
