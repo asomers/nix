@@ -339,9 +339,7 @@ mod recvfrom {
             // with size 2 and two UDP packet with size 1 will be sent.
             let segment_size: u16 = 2;
 
-            let std_sa = SocketAddr::from_str("127.0.0.1:6791").unwrap();
-            let inet_addr = InetAddr::from_std(&std_sa);
-            let sock_addr = SockAddr::new_inet(inet_addr);
+            let sock_addr = SockaddrIn::new(127, 0, 0, 1, 6791);
             let rsock = socket(AddressFamily::Inet,
                                SockType::Datagram,
                                SockFlag::empty(),
@@ -606,7 +604,7 @@ mod recvfrom {
 #[test]
 pub fn test_recvmsg_ebadf() {
     use nix::errno::Errno;
-    use nix::sys::socket::{MsgFlags, SockaddrStorage, recvmsg};
+    use nix::sys::socket::{MsgFlags, recvmsg};
     use nix::sys::uio::IoVec;
 
     let mut buf = [0u8; 5];
@@ -679,7 +677,7 @@ pub fn test_af_alg_cipher() {
     use nix::sys::uio::IoVec;
     use nix::unistd::read;
     use nix::sys::socket::{socket, sendmsg, bind, accept, setsockopt,
-                           AddressFamily, SockType, SockFlag, SockAddr,
+                           AddressFamily, SockType, SockFlag, AlgAddr,
                            ControlMessage, MsgFlags};
     use nix::sys::socket::sockopt::AlgSetKey;
 
@@ -702,15 +700,11 @@ pub fn test_af_alg_cipher() {
     let sock = socket(AddressFamily::Alg, SockType::SeqPacket, SockFlag::empty(), None)
         .expect("socket failed");
 
-    let sockaddr = SockAddr::new_alg(alg_type, alg_name);
+    let sockaddr = AlgAddr::new(alg_type, alg_name);
     bind(sock, &sockaddr).expect("bind failed");
 
-    if let SockAddr::Alg(alg) = sockaddr {
-        assert_eq!(alg.alg_name().to_string_lossy(), alg_name);
-        assert_eq!(alg.alg_type().to_string_lossy(), alg_type);
-    } else {
-        panic!("unexpected SockAddr");
-    }
+    assert_eq!(sockaddr.alg_name().to_string_lossy(), alg_name);
+    assert_eq!(sockaddr.alg_type().to_string_lossy(), alg_type);
 
     setsockopt(sock, AlgSetKey::default(), &key).expect("setsockopt");
     let session_socket = accept(sock).expect("accept failed");
@@ -750,7 +744,7 @@ pub fn test_af_alg_aead() {
     use nix::sys::uio::IoVec;
     use nix::unistd::{read, close};
     use nix::sys::socket::{socket, sendmsg, bind, accept, setsockopt,
-                           AddressFamily, SockType, SockFlag, SockAddr,
+                           AddressFamily, SockType, SockFlag, AlgAddr,
                            ControlMessage, MsgFlags};
     use nix::sys::socket::sockopt::{AlgSetKey, AlgSetAeadAuthSize};
 
@@ -786,7 +780,7 @@ pub fn test_af_alg_aead() {
     let sock = socket(AddressFamily::Alg, SockType::SeqPacket, SockFlag::empty(), None)
         .expect("socket failed");
 
-    let sockaddr = SockAddr::new_alg(alg_type, alg_name);
+    let sockaddr = AlgAddr::new(alg_type, alg_name);
     bind(sock, &sockaddr).expect("bind failed");
 
     setsockopt(sock, AlgSetAeadAuthSize, &auth_size).expect("setsockopt AlgSetAeadAuthSize");
@@ -851,7 +845,7 @@ pub fn test_sendmsg_ipv4packetinfo() {
     use cfg_if::cfg_if;
     use nix::sys::uio::IoVec;
     use nix::sys::socket::{socket, sendmsg, bind,
-                           AddressFamily, SockType, SockFlag, SockAddr,
+                           AddressFamily, SockType, SockFlag, SockaddrIn,
                            ControlMessage, MsgFlags};
 
     let sock = socket(AddressFamily::Inet,
@@ -860,39 +854,32 @@ pub fn test_sendmsg_ipv4packetinfo() {
                       None)
         .expect("socket failed");
 
-    let std_sa = SocketAddr::from_str("127.0.0.1:4000").unwrap();
-    let inet_addr = InetAddr::from_std(&std_sa);
-    let sock_addr = SockAddr::new_inet(inet_addr);
+    let sock_addr = SockaddrIn::new(127,0,0,1, 4000);
 
     bind(sock, &sock_addr).expect("bind failed");
 
     let slice = [1u8, 2, 3, 4, 5, 6, 7, 8];
     let iov = [IoVec::from_slice(&slice)];
 
-    if let InetAddr::V4(sin) = inet_addr {
-        cfg_if! {
-            if #[cfg(target_os = "netbsd")] {
-                let _dontcare = sin;
-                let pi = libc::in_pktinfo {
-                    ipi_ifindex: 0, /* Unspecified interface */
-                    ipi_addr: libc::in_addr { s_addr: 0 },
-                };
-            } else {
-                let pi = libc::in_pktinfo {
-                    ipi_ifindex: 0, /* Unspecified interface */
-                    ipi_addr: libc::in_addr { s_addr: 0 },
-                    ipi_spec_dst: sin.sin_addr,
-                };
-            }
+    cfg_if! {
+        if #[cfg(target_os = "netbsd")] {
+            let pi = libc::in_pktinfo {
+                ipi_ifindex: 0, /* Unspecified interface */
+                ipi_addr: libc::in_addr { s_addr: 0 },
+            };
+        } else {
+            let pi = libc::in_pktinfo {
+                ipi_ifindex: 0, /* Unspecified interface */
+                ipi_addr: libc::in_addr { s_addr: 0 },
+                ipi_spec_dst: sock_addr.as_ref().sin_addr,
+            };
         }
-
-        let cmsg = [ControlMessage::Ipv4PacketInfo(&pi)];
-
-        sendmsg(sock, &iov, &cmsg, MsgFlags::empty(), Some(&sock_addr))
-            .expect("sendmsg");
-    } else {
-        panic!("No IPv4 addresses available for testing?");
     }
+
+    let cmsg = [ControlMessage::Ipv4PacketInfo(&pi)];
+
+    sendmsg(sock, &iov, &cmsg, MsgFlags::empty(), Some(&sock_addr))
+        .expect("sendmsg");
 }
 
 // Verify `ControlMessage::Ipv6PacketInfo` for `sendmsg`.
@@ -1295,7 +1282,7 @@ fn loopback_address(family: AddressFamily) -> Option<nix::ifaddrs::InterfaceAddr
 #[test]
 pub fn test_recv_ipv4pktinfo() {
     use nix::sys::socket::sockopt::Ipv4PacketInfo;
-    use nix::sys::socket::{bind, SockFlag, SockType};
+    use nix::sys::socket::{bind, SockaddrIn, SockFlag, SockType};
     use nix::sys::socket::{getsockname, setsockopt, socket};
     use nix::sys::socket::{recvmsg, sendmsg, ControlMessageOwned, MsgFlags};
     use nix::sys::uio::IoVec;
@@ -1314,7 +1301,7 @@ pub fn test_recv_ipv4pktinfo() {
             None,
         ).expect("receive socket failed");
     bind(receive, &lo).expect("bind failed");
-    let sa = getsockname(receive).expect("getsockname failed");
+    let sa: SockaddrIn = getsockname(receive).expect("getsockname failed");
     setsockopt(receive, Ipv4PacketInfo, &true).expect("setsockopt failed");
 
     {
@@ -1574,7 +1561,7 @@ pub fn test_recv_ipv6pktinfo() {
 pub fn test_vsock() {
     use nix::errno::Errno;
     use nix::sys::socket::{AddressFamily, socket, bind, connect, listen,
-                           SockAddr, SockType, SockFlag};
+                           SockType, SockFlag, VsockAddr};
     use nix::unistd::{close};
     use std::thread;
 
@@ -1585,12 +1572,12 @@ pub fn test_vsock() {
              .expect("socket failed");
 
     // VMADDR_CID_HYPERVISOR is reserved, so we expect an EADDRNOTAVAIL error.
-    let sockaddr = SockAddr::new_vsock(libc::VMADDR_CID_HYPERVISOR, port);
-    assert_eq!(bind(s1, &sockaddr).err(),
+    let sockaddr_hv = VsockAddr::new(libc::VMADDR_CID_HYPERVISOR, port);
+    assert_eq!(bind(s1, &sockaddr_hv).err(),
                Some(Errno::EADDRNOTAVAIL));
 
-    let sockaddr = SockAddr::new_vsock(libc::VMADDR_CID_ANY, port);
-    assert_eq!(bind(s1, &sockaddr), Ok(()));
+    let sockaddr_any = VsockAddr::new(libc::VMADDR_CID_ANY, port);
+    assert_eq!(bind(s1, &sockaddr_any), Ok(()));
     listen(s1, 10).expect("listen failed");
 
     let thr = thread::spawn(move || {
@@ -1600,11 +1587,11 @@ pub fn test_vsock() {
                         SockFlag::empty(), None)
                  .expect("socket failed");
 
-        let sockaddr = SockAddr::new_vsock(cid, port);
+        let sockaddr_host = VsockAddr::new(cid, port);
 
         // The current implementation does not support loopback devices, so,
         // for now, we expect a failure on the connect.
-        assert_ne!(connect(s2, &sockaddr), Ok(()));
+        assert_ne!(connect(s2, &sockaddr_host), Ok(()));
 
         close(s2).unwrap();
     });
@@ -1633,7 +1620,7 @@ fn test_recvmsg_timestampns() {
         None).unwrap();
     setsockopt(in_socket, sockopt::ReceiveTimestampns, &true).unwrap();
     let localhost = SockaddrIn::new(127, 0, 0, 1, 0);
-    bind(in_socket, &SockAddr::new_inet(localhost)).unwrap();
+    bind(in_socket, &localhost).unwrap();
     let address: SockaddrIn = getsockname(in_socket).unwrap();
     // Get initial time
     let time0 = SystemTime::now();
@@ -1810,7 +1797,7 @@ fn test_recvmsg_rxq_ovfl() {
 ))]
 mod linux_errqueue {
     use nix::sys::socket::*;
-    use super::{FromStr, SocketAddr};
+    use super::FromStr;
 
     // Send a UDP datagram to a bogus destination address and observe an ICMP error (v4).
     //
@@ -1917,11 +1904,7 @@ mod linux_errqueue {
 
         const MESSAGE_CONTENTS: &str = "ABCDEF";
 
-        let sock_addr = {
-            let std_sa = SocketAddr::from_str(sa).unwrap();
-            let inet_addr = InetAddr::from_std(&std_sa);
-            SockAddr::new_inet(inet_addr)
-        };
+        let sock_addr = SockaddrIn::from_str(sa).unwrap();
         let sock = socket(af, SockType::Datagram, SockFlag::SOCK_CLOEXEC, None).unwrap();
         setsockopt(sock, opt, &true).unwrap();
         if let Err(e) = sendto(sock, MESSAGE_CONTENTS.as_bytes(), &sock_addr, MsgFlags::empty()) {
