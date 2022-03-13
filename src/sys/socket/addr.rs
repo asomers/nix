@@ -884,6 +884,14 @@ impl Hash for UnixAddr {
 /// Most implementors also implement `AsRef<libc::XXX>` to access their
 /// inner type read-only.
 pub trait SockaddrLike: private::Sealed {
+    fn as_ptr(&self) -> *const libc::sockaddr {
+        self as *const Self as *const libc::sockaddr
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut libc::sockaddr {
+        self as *mut Self as *mut libc::sockaddr
+    }
+
     /// Unsafe constructor from a variable length source
     ///
     /// Some C APIs from provide `len`, and others do not.  If it's provided it
@@ -913,8 +921,8 @@ pub trait SockaddrLike: private::Sealed {
                   target_os = "macos",
                   target_os = "netbsd",
                   target_os = "openbsd"))] {
-            /// Return the length of the sockaddr structure
-            fn socklen(&self) -> libc::socklen_t {
+            /// Return the length of valid data in the sockaddr structure
+            fn len(&self) -> libc::socklen_t {
                 // Safe since all implementors have a sa_len field at the same
                 // address, and they're all repr(transparent).
                 // Robust for all implementors.
@@ -924,7 +932,7 @@ pub trait SockaddrLike: private::Sealed {
             }
         } else {
             /// Return the length of the sockaddr structure
-            fn socklen(&self) -> libc::socklen_t {
+            fn len(&self) -> libc::socklen_t {
                 // No robust default implementation is possible without an
                 // sa_len field.  Implementors with a variable size must
                 // override this method.
@@ -933,9 +941,9 @@ pub trait SockaddrLike: private::Sealed {
         }
     }
 
-    /// Used for many syscalls that need a socket address
-    fn as_ffi_pair(&self) -> (*const libc::sockaddr, libc::socklen_t) {
-        (self as *const Self as *const libc::sockaddr, self.socklen().into())
+    /// Return the available space in the structure
+    fn space() -> libc::socklen_t where Self: Sized {
+        mem::size_of::<Self>() as libc::socklen_t
     }
 }
 
@@ -1139,7 +1147,7 @@ impl SockaddrStorage {
     #[cfg(feature = "net")]
     pub fn as_sockaddr_dl(&self) -> Option<&LinkAddr> {
         if self.family() == Some(AddressFamily::Link) &&
-          self.socklen() >= mem::size_of::<libc::sockaddr_dl>() as libc::socklen_t
+          self.len() >= mem::size_of::<libc::sockaddr_dl>() as libc::socklen_t
         {
             // Safe because family and len are validated
             Some(unsafe{&self.dl})
@@ -1151,7 +1159,7 @@ impl SockaddrStorage {
     #[cfg(feature = "net")]
     pub fn as_sockaddr_in(&self) -> Option<&SockaddrIn> {
         if self.family() == Some(AddressFamily::Inet) &&
-          self.socklen() >= mem::size_of::<libc::sockaddr_in>() as libc::socklen_t
+          self.len() >= mem::size_of::<libc::sockaddr_in>() as libc::socklen_t
         {
             // Safe because family and len are validated
             Some(unsafe{&self.sin})
@@ -1163,7 +1171,7 @@ impl SockaddrStorage {
     #[cfg(feature = "net")]
     pub fn as_sockaddr_in6(&self) -> Option<&SockaddrIn6> {
         if self.family() == Some(AddressFamily::Inet6) &&
-          self.socklen() >= mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t
+          self.len() >= mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t
         {
             // Safe because family and len are validated
             Some(unsafe{&self.sin6})
