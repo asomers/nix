@@ -67,13 +67,11 @@ pub fn test_inetv4_addr_roundtrip_sockaddr_storage_to_addr() {
 pub fn test_timestamping() {
     use nix::sys::socket::{
         recvmsg, sendmsg, setsockopt, socket, sockopt::Timestamping, ControlMessageOwned, MsgFlags,
-        SockFlag, SockType, TimestampingFlag,
+        SockaddrIn, SockFlag, SockType, TimestampingFlag,
     };
     use nix::sys::uio::IoVec;
 
-    let std_sa = SocketAddr::from_str("127.0.0.1:6790").unwrap();
-    let inet_addr = InetAddr::from_std(&std_sa);
-    let sock_addr = SockAddr::new_inet(inet_addr);
+    let sock_addr = SockaddrIn::from_str("127.0.0.1:6790").unwrap();
 
     let ssock = socket(
         AddressFamily::Inet,
@@ -1634,9 +1632,9 @@ fn test_recvmsg_timestampns() {
         SockFlag::empty(),
         None).unwrap();
     setsockopt(in_socket, sockopt::ReceiveTimestampns, &true).unwrap();
-    let localhost = InetAddr::new(IpAddr::new_v4(127, 0, 0, 1), 0);
+    let localhost = SockaddrIn::new(127, 0, 0, 1, 0);
     bind(in_socket, &SockAddr::new_inet(localhost)).unwrap();
-    let address = getsockname(in_socket).unwrap();
+    let address: SockaddrIn = getsockname(in_socket).unwrap();
     // Get initial time
     let time0 = SystemTime::now();
     // Send the message
@@ -1685,9 +1683,9 @@ fn test_recvmmsg_timestampns() {
         SockFlag::empty(),
         None).unwrap();
     setsockopt(in_socket, sockopt::ReceiveTimestampns, &true).unwrap();
-    let localhost = InetAddr::new(IpAddr::new_v4(127, 0, 0, 1), 0);
-    bind(in_socket, &SockAddr::new_inet(localhost)).unwrap();
-    let address = getsockname(in_socket).unwrap();
+    let localhost = SockaddrIn::from_str("127.0.0.1").unwrap();
+    bind(in_socket, &localhost).unwrap();
+    let address: SockaddrIn = getsockname(in_socket).unwrap();
     // Get initial time
     let time0 = SystemTime::now();
     // Send the message
@@ -1705,7 +1703,7 @@ fn test_recvmmsg_timestampns() {
             cmsg_buffer: Some(&mut cmsgspace),
         },
     ];
-    let r = recvmmsg(in_socket, &mut data, flags, None).unwrap();
+    let r: Vec<RecvMsg<SockaddrIn>> = recvmmsg(in_socket, &mut data, flags, None).unwrap();
     let rtime = match r[0].cmsgs().next() {
         Some(ControlMessageOwned::ScmTimestampns(rtime)) => rtime,
         Some(_) => panic!("Unexpected control message"),
@@ -1748,10 +1746,10 @@ fn test_recvmsg_rxq_ovfl() {
         SockFlag::empty(),
         None).unwrap();
 
-    let localhost = InetAddr::new(IpAddr::new_v4(127, 0, 0, 1), 0);
-    bind(in_socket, &SockAddr::new_inet(localhost)).unwrap();
+    let localhost = SockaddrIn::from_str("127.0.0.1").unwrap();
+    bind(in_socket, &localhost).unwrap();
 
-    let address = getsockname(in_socket).unwrap();
+    let address: SockaddrIn = getsockname(in_socket).unwrap();
     connect(out_socket, &address).unwrap();
 
     // Set SO_RXQ_OVFL flag.
@@ -1780,7 +1778,7 @@ fn test_recvmsg_rxq_ovfl() {
 
             let iov = [IoVec::from_mut_slice(&mut buffer)];
 
-            match recvmsg(
+            match recvmsg::<SockaddrIn>(
                 in_socket,
                 &iov,
                 Some(&mut cmsgspace),
@@ -1971,16 +1969,14 @@ mod linux_errqueue {
 pub fn test_txtime() {
     use nix::sys::socket::{
         bind, recvmsg, sendmsg, setsockopt, socket, sockopt, ControlMessage,
-        MsgFlags, SockFlag, SockType,
+        MsgFlags, SockaddrIn, SockFlag, SockType,
     };
     use nix::sys::time::TimeValLike;
     use nix::time::{ClockId, clock_gettime};
 
     require_kernel_version!(test_txtime, ">= 5.8");
 
-    let std_sa = SocketAddr::from_str("127.0.0.1:6802").unwrap();
-    let inet_addr = InetAddr::from_std(&std_sa);
-    let sock_addr = SockAddr::new_inet(inet_addr);
+    let sock_addr = SockaddrIn::from_str("127.0.0.1:6802").unwrap();
 
     let ssock = socket(
         AddressFamily::Inet,
@@ -2017,5 +2013,5 @@ pub fn test_txtime() {
 
     let mut rbuf = [0u8; 2048];
     let iov2 = [nix::sys::uio::IoVec::from_mut_slice(&mut rbuf)];
-    recvmsg(rsock, &iov2, None, MsgFlags::empty()).unwrap();
+    recvmsg::<SockaddrIn>(rsock, &iov2, None, MsgFlags::empty()).unwrap();
 }

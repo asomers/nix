@@ -1339,6 +1339,7 @@ impl<'a> ControlMessage<'a> {
 /// as with sendto.
 ///
 /// Allocates if cmsgs is nonempty.
+// TODO: should we create a separate function to use when addr==None, just so it won't be generic?
 pub fn sendmsg<S>(fd: RawFd, iov: &[IoVec<&[u8]>], cmsgs: &[ControlMessage],
                flags: MsgFlags, addr: Option<&S>) -> Result<usize>
     where S: SockaddrLike

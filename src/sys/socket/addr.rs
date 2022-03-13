@@ -976,6 +976,25 @@ impl SockaddrIn {
         u32::from_be(self.0.sin_addr.s_addr)
     }
 
+    /// Creates a new socket address from IPv4 octets and a port number.
+    pub fn new(a: u8, b: u8, c: u8, d: u8, port: u16) -> Self {
+        Self(libc::sockaddr_in {
+            #[cfg(any(target_os = "dragonfly",
+                  target_os = "freebsd",
+                  target_os = "ios",
+                  target_os = "macos",
+                  target_os = "netbsd",
+                  target_os = "openbsd"))]
+            sin_len: Self::space(),
+            sin_family: AddressFamily::Inet as u16,
+            sin_port: u16::to_be(port),
+            sin_addr: libc::in_addr {
+                s_addr: u32::from_ne_bytes([a, b, c, d])
+            },
+            sin_zero: unsafe{mem::zeroed()}
+        })
+    }
+
     /// Returns the port number associated with this socket address, in native
     /// endian.
     pub const fn port(&self) -> u16 {
@@ -1591,6 +1610,7 @@ pub mod netlink {
     use crate::sys::socket::addr::AddressFamily;
     use libc::{sa_family_t, sockaddr_nl};
     use std::{fmt, mem};
+    use super::*;
 
     #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
     #[repr(transparent)]
@@ -1615,6 +1635,7 @@ pub mod netlink {
         }
     }
 
+    impl private::Sealed for NetlinkAddr {}
     impl SockaddrLike for NetlinkAddr {
         unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
             -> Option<Self> where Self: Sized
@@ -1627,7 +1648,7 @@ pub mod netlink {
             if (*addr).sa_family as i32 != libc::AF_NETLINK as i32 {
                 return None;
             }
-            Some(NetlinkAddr(*(addr as *const libc::sockaddr_in6)))
+            Some(NetlinkAddr(*(addr as *const libc::sockaddr_nl)))
         }
     }
 
@@ -1651,6 +1672,7 @@ pub mod alg {
     use std::{fmt, mem, str};
     use std::hash::{Hash, Hasher};
     use std::ffi::CStr;
+    use super::*;
 
     #[derive(Copy, Clone)]
     #[repr(transparent)]
@@ -1661,15 +1683,15 @@ pub mod alg {
         unsafe fn from_raw(addr: *const libc::sockaddr, l: Option<libc::socklen_t>)
             -> Option<Self> where Self: Sized
         {
-            if let Some(l) = len {
-                if l != mem::size_of::<libc::sockaddr_ctl>() as libc::socklen_t {
+            if let Some(l) = l {
+                if l != mem::size_of::<libc::sockaddr_alg>() as libc::socklen_t {
                     return None;
                 }
             }
             if (*addr).sa_family as i32 != libc::AF_ALG as i32 {
                 return None;
             }
-            Some(AlgAddr(*(addr as *const libc::sockaddr_ctl)))
+            Some(AlgAddr(*(addr as *const libc::sockaddr_alg)))
         }
     }
 
@@ -2057,6 +2079,7 @@ pub mod vsock {
     use libc::{sa_family_t, sockaddr_vm};
     use std::{fmt, mem};
     use std::hash::{Hash, Hasher};
+    use super::*;
 
     #[derive(Copy, Clone)]
     #[repr(transparent)]
