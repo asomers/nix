@@ -1337,6 +1337,41 @@ impl fmt::Debug for SockaddrStorage {
     }
 }
 
+impl fmt::Display for SockaddrStorage {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        unsafe {
+            match self.sa.0.sa_family as i32 {
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                libc::AF_ALG => self.alg.fmt(f),
+                #[cfg(feature = "net")]
+                libc::AF_INET => self.sin.fmt(f),
+                libc::AF_INET6 => self.sin6.fmt(f),
+                #[cfg(any(target_os = "dragonfly",
+                          target_os = "freebsd",
+                          target_os = "ios",
+                          target_os = "macos",
+                          target_os = "illumos",
+                          target_os = "netbsd",
+                          target_os = "openbsd"))]
+                libc::AF_LINK => self.dl.fmt(f),
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                libc::AF_NETLINK => self.nl.fmt(f),
+                #[cfg(any(target_os = "android",
+                          target_os = "linux",
+                          target_os = "fuchsia"
+                ))]
+                libc::AF_PACKET => self.dl.fmt(f),
+                #[cfg(any(target_os = "ios", target_os = "macos"))]
+                libc::AF_SYSTEM => self.sctl.fmt(f),
+                libc::AF_UNIX => self.su.fmt(f),
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                libc::AF_VSOCK => self.vsock.fmt(f),
+                _ => "<Address family unspecified>".fmt(f)
+            }
+        }
+    }
+}
+
 impl Hash for SockaddrStorage {
     fn hash<H: Hasher>(&self, s: &mut H) {
         unsafe {
@@ -2073,6 +2108,7 @@ mod datalink {
 
     impl fmt::Display for LinkAddr {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            dbg!(&self);
             let addr = self.addr();
             write!(f, "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
                 addr[0],
