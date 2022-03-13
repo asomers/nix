@@ -2251,7 +2251,7 @@ mod tests {
             let sock_addr = unsafe { SockaddrStorage::from_raw(sa, len) }.unwrap();
             assert_eq!(sock_addr.family(), Some(AddressFamily::Link));
             match sock_addr.as_sockaddr_dl() {
-                Some(dl) => assert_eq!(dl.addr(), [48u8, 0, 9, 0, 0, 0]),
+                Some(dl) => assert_eq!(dl.addr(), Some([48u8, 0, 9, 0, 0, 0])),
                 None => panic!("Can't unwrap sockaddr storage")
             }
         }
@@ -2261,7 +2261,6 @@ mod tests {
                   target_os = "freebsd",
                   target_os = "ios",
                   target_os = "macos",
-                  target_os = "illumos",
                   target_os = "netbsd",
                   target_os = "openbsd"))]
         #[test]
@@ -2274,7 +2273,7 @@ mod tests {
                 sdl_nlen: 3,
                 sdl_alen: 0,
                 sdl_slen: 0,
-                sdl_data: unsafe{std::mem::zeroed()}
+                .. unsafe{std::mem::zeroed()}
             });
             format!("{}", la);
         }
@@ -2292,7 +2291,8 @@ mod tests {
             let sock_addr = unsafe { SockaddrStorage::from_raw(sa, len).unwrap() };
             assert_eq!(sock_addr.family(), Some(AddressFamily::Link));
             match sock_addr.as_sockaddr_dl() {
-                Some(dl) => assert_eq!(dl.addr(), [24u8, 101, 144, 221, 76, 176]),
+                Some(dl) => assert_eq!(dl.addr(),
+                                       Some([24u8, 101, 144, 221, 76, 176])),
                 None => panic!("Can't unwrap sockaddr storage")
             }
         }
