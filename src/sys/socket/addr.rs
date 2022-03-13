@@ -1360,10 +1360,8 @@ impl Hash for SockaddrStorage {
                           target_os = "fuchsia"
                 ))]
                 libc::AF_PACKET => self.dl.hash(s),
-                // XXX OSX uses the same value for AF_SYS_CONTROL as for
-                // AF_INET.  So methods like hash can't distinguish between the
-                // two.  hash will therefore produce the wrong result.
-                // libc::AF_SYS_CONTROL => self.sctl.hash(s),
+                #[cfg(any(target_os = "ios", target_os = "macos"))]
+                libc::AF_SYSTEM => self.sctl.hash(s),
                 libc::AF_UNIX => self.su.hash(s),
                 #[cfg(any(target_os = "android", target_os = "linux"))]
                 libc::AF_VSOCK => self.vsock.hash(s),
