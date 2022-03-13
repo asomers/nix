@@ -1468,7 +1468,6 @@ mod private {
     note = "use SockaddrLike or SockaddrStorage instead"
 )]
 #[non_exhaustive]
-// TODO: implement SockaddrLike
 pub enum SockAddr {
     #[cfg(feature = "net")]
     #[cfg_attr(docsrs, doc(cfg(feature = "net")))]
@@ -1574,6 +1573,66 @@ impl SockAddr {
     #[deprecated(since = "0.23.0", note = "use .to_string() instead")]
     pub fn to_str(&self) -> String {
         format!("{}", self)
+    }
+
+    /// Creates a `SockAddr` struct from libc's sockaddr.
+    ///
+    /// Supports only the following address families: Unix, Inet (v4 & v6), Netlink and System.
+    /// Returns None for unsupported families.
+    ///
+    /// # Safety
+    ///
+    /// unsafe because it takes a raw pointer as argument.  The caller must
+    /// ensure that the pointer is valid.
+    #[cfg(not(target_os = "fuchsia"))]
+    #[cfg(feature = "net")]
+    pub(crate) unsafe fn from_libc_sockaddr(addr: *const libc::sockaddr) -> Option<SockAddr> {
+        if addr.is_null() {
+            None
+        } else {
+            match AddressFamily::from_i32(i32::from((*addr).sa_family)) {
+                Some(AddressFamily::Unix) => None,
+                #[cfg(feature = "net")]
+                Some(AddressFamily::Inet) => Some(SockAddr::Inet(
+                    InetAddr::V4(*(addr as *const libc::sockaddr_in)))),
+                #[cfg(feature = "net")]
+                Some(AddressFamily::Inet6) => Some(SockAddr::Inet(
+                    InetAddr::V6(*(addr as *const libc::sockaddr_in6)))),
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                Some(AddressFamily::Netlink) => Some(SockAddr::Netlink(
+                    NetlinkAddr(*(addr as *const libc::sockaddr_nl)))),
+                #[cfg(all(feature = "ioctl",
+                          any(target_os = "ios", target_os = "macos")))]
+                Some(AddressFamily::System) => Some(SockAddr::SysControl(
+                    SysControlAddr(*(addr as *const libc::sockaddr_ctl)))),
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                #[cfg(feature = "net")]
+                Some(AddressFamily::Packet) => Some(SockAddr::Link(
+                    LinkAddr(*(addr as *const libc::sockaddr_ll)))),
+                #[cfg(any(target_os = "dragonfly",
+                          target_os = "freebsd",
+                          target_os = "ios",
+                          target_os = "macos",
+                          target_os = "netbsd",
+                          target_os = "illumos",
+                          target_os = "openbsd"))]
+                #[cfg(feature = "net")]
+                Some(AddressFamily::Link) => {
+                    let ether_addr = LinkAddr(*(addr as *const libc::sockaddr_dl));
+                    if ether_addr.is_empty() {
+                        None
+                    } else {
+                        Some(SockAddr::Link(ether_addr))
+                    }
+                },
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                Some(AddressFamily::Vsock) => Some(SockAddr::Vsock(
+                    VsockAddr(*(addr as *const libc::sockaddr_vm)))),
+                // Other address families are currently not supported and simply yield a None
+                // entry instead of a proper conversion to a `SockAddr`.
+                Some(_) | None => None,
+            }
+        }
     }
 
     /// Conversion from nix's SockAddr type to the underlying libc sockaddr type.
@@ -1698,6 +1757,21 @@ impl fmt::Display for SockAddr {
             #[cfg(any(target_os = "android", target_os = "linux"))]
             SockAddr::Vsock(ref svm) => svm.fmt(f),
         }
+    }
+}
+
+#[cfg(not(target_os = "fuchsia"))]
+#[cfg(feature = "net")]
+#[allow(deprecated)]
+impl private::Sealed for SockAddr {}
+#[cfg(not(target_os = "fuchsia"))]
+#[cfg(feature = "net")]
+#[allow(deprecated)]
+impl SockaddrLike for SockAddr {
+    unsafe fn from_raw(addr: *const libc::sockaddr, _len: Option<libc::socklen_t>)
+        -> Option<Self>
+    {
+        Self::from_libc_sockaddr(addr)
     }
 }
 
