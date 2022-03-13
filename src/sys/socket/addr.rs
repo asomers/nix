@@ -2266,7 +2266,7 @@ mod tests {
                   target_os = "openbsd"))]
         #[test]
         fn display_empty() {
-            let la = LinkAddr(libc::sockaddr_dl{
+            let la = super::datalink::LinkAddr(libc::sockaddr_dl{
                 sdl_len: 56,
                 sdl_family: 18,
                 sdl_index: 5,
@@ -2274,7 +2274,7 @@ mod tests {
                 sdl_nlen: 3,
                 sdl_alen: 0,
                 sdl_slen: 0,
-                sdl_data: unsafe{mem::zeroed()}
+                sdl_data: unsafe{std::mem::zeroed()}
             });
             format!("{}", la);
         }
