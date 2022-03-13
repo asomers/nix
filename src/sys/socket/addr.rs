@@ -947,6 +947,35 @@ pub trait SockaddrLike: private::Sealed {
     }
 }
 
+impl private::Sealed for () {}
+/// `()` can be used in place of a real Sockaddr when no address is expected,
+/// for example for a field of `Option<S> where S: SockaddrLike`.
+// If this RFC ever stabilizes, then ! will be a better choice.
+// https://github.com/rust-lang/rust/issues/35121
+impl SockaddrLike for () {
+    fn as_ptr(&self) -> *const libc::sockaddr {
+        ptr::null()
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut libc::sockaddr {
+        ptr::null_mut()
+    }
+
+    unsafe fn from_raw(_: *const libc::sockaddr, _: Option<libc::socklen_t>)
+        -> Option<Self> where Self: Sized
+    {
+        None
+    }
+
+    fn family(&self) -> Option<AddressFamily> {
+        None
+    }
+
+    fn len(&self) -> libc::socklen_t {
+        0
+    }
+}
+
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Sockaddr(libc::sockaddr);
@@ -985,8 +1014,8 @@ impl SockaddrIn {
                   target_os = "macos",
                   target_os = "netbsd",
                   target_os = "openbsd"))]
-            sin_len: Self::space(),
-            sin_family: AddressFamily::Inet as u16,
+            sin_len: Self::space() as u8,
+            sin_family: AddressFamily::Inet as sa_family_t,
             sin_port: u16::to_be(port),
             sin_addr: libc::in_addr {
                 s_addr: u32::from_ne_bytes([a, b, c, d])

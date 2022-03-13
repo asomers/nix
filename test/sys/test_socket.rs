@@ -99,7 +99,7 @@ pub fn test_timestamping() {
     let iov2 = [IoVec::from_mut_slice(&mut rbuf)];
     let mut cmsg = cmsg_space!(nix::sys::socket::Timestamps);
     sendmsg(ssock, &iov1, &[], flags, Some(&sock_addr)).unwrap();
-    let recv = recvmsg(rsock, &iov2, Some(&mut cmsg), flags).unwrap();
+    let recv = recvmsg::<()>(rsock, &iov2, Some(&mut cmsg), flags).unwrap();
 
     let mut ts = None;
     for c in recv.cmsgs() {
@@ -612,7 +612,7 @@ pub fn test_recvmsg_ebadf() {
     let mut buf = [0u8; 5];
     let iov = [IoVec::from_mut_slice(&mut buf[..])];
     let fd = -1;    // Bad file descriptor
-    let r = recvmsg::<SockaddrStorage>(fd, &iov, None, MsgFlags::empty());
+    let r = recvmsg::<()>(fd, &iov, None, MsgFlags::empty());
     assert_eq!(r.err().unwrap(), Errno::EBADF);
 }
 
@@ -636,7 +636,7 @@ pub fn test_scm_rights() {
         let iov = [IoVec::from_slice(b"hello")];
         let fds = [r];
         let cmsg = ControlMessage::ScmRights(&fds);
-        assert_eq!(sendmsg::<UnixAddr>(fd1, &iov, &[cmsg], MsgFlags::empty(), None).unwrap(), 5);
+        assert_eq!(sendmsg::<()>(fd1, &iov, &[cmsg], MsgFlags::empty(), None).unwrap(), 5);
         close(r).unwrap();
         close(fd1).unwrap();
     }
@@ -645,7 +645,7 @@ pub fn test_scm_rights() {
         let mut buf = [0u8; 5];
         let iov = [IoVec::from_mut_slice(&mut buf[..])];
         let mut cmsgspace = cmsg_space!([RawFd; 1]);
-        let msg = recvmsg::<UnixAddr>(fd2, &iov, Some(&mut cmsgspace), MsgFlags::empty()).unwrap();
+        let msg = recvmsg::<()>(fd2, &iov, Some(&mut cmsgspace), MsgFlags::empty()).unwrap();
 
         for cmsg in msg.cmsgs() {
             if let ControlMessageOwned::ScmRights(fd) = cmsg {
@@ -717,7 +717,7 @@ pub fn test_af_alg_cipher() {
 
     let msgs = [ControlMessage::AlgSetOp(&libc::ALG_OP_ENCRYPT), ControlMessage::AlgSetIv(iv.as_slice())];
     let iov = IoVec::from_slice(&payload);
-    sendmsg(session_socket, &[iov], &msgs, MsgFlags::empty(), None).expect("sendmsg encrypt");
+    sendmsg::<()>(session_socket, &[iov], &msgs, MsgFlags::empty(), None).expect("sendmsg encrypt");
 
     // allocate buffer for encrypted data
     let mut encrypted = vec![0u8; payload_len];
@@ -729,7 +729,7 @@ pub fn test_af_alg_cipher() {
     let iv = vec![1u8; iv_len];
 
     let msgs = [ControlMessage::AlgSetOp(&libc::ALG_OP_DECRYPT), ControlMessage::AlgSetIv(iv.as_slice())];
-    sendmsg(session_socket, &[iov], &msgs, MsgFlags::empty(), None).expect("sendmsg decrypt");
+    sendmsg::<()>(session_socket, &[iov], &msgs, MsgFlags::empty(), None).expect("sendmsg decrypt");
 
     // allocate buffer for decrypted data
     let mut decrypted = vec![0u8; payload_len];
@@ -798,7 +798,7 @@ pub fn test_af_alg_aead() {
         ControlMessage::AlgSetIv(iv.as_slice()),
         ControlMessage::AlgSetAeadAssoclen(&assoc_size)];
     let iov = IoVec::from_slice(&payload);
-    sendmsg(session_socket, &[iov], &msgs, MsgFlags::empty(), None).expect("sendmsg encrypt");
+    sendmsg::<()>(session_socket, &[iov], &msgs, MsgFlags::empty(), None).expect("sendmsg encrypt");
 
     // allocate buffer for encrypted data
     let mut encrypted = vec![0u8; (assoc_size as usize) + payload_len + auth_size];
@@ -821,7 +821,7 @@ pub fn test_af_alg_aead() {
         ControlMessage::AlgSetIv(iv.as_slice()),
         ControlMessage::AlgSetAeadAssoclen(&assoc_size),
     ];
-    sendmsg(session_socket, &[iov], &msgs, MsgFlags::empty(), None).expect("sendmsg decrypt");
+    sendmsg::<()>(session_socket, &[iov], &msgs, MsgFlags::empty(), None).expect("sendmsg decrypt");
 
     // allocate buffer for decrypted data
     let mut decrypted = vec![0u8; payload_len + (assoc_size as usize) + auth_size];
@@ -962,7 +962,7 @@ fn test_scm_rights_single_cmsg_multiple_fds() {
         let mut buf = [0u8; 8];
         let iovec = [IoVec::from_mut_slice(&mut buf)];
         let mut space = cmsg_space!([RawFd; 2]);
-        let msg = recvmsg::<UnixAddr>(
+        let msg = recvmsg::<()>(
             receive.as_raw_fd(),
             &iovec,
             Some(&mut space),
@@ -989,7 +989,7 @@ fn test_scm_rights_single_cmsg_multiple_fds() {
     let iov = [IoVec::from_slice(&slice)];
     let fds = [libc::STDIN_FILENO, libc::STDOUT_FILENO];    // pass stdin and stdout
     let cmsg = [ControlMessage::ScmRights(&fds)];
-    sendmsg::<UnixAddr>(send.as_raw_fd(), &iov, &cmsg, MsgFlags::empty(), None).unwrap();
+    sendmsg::<()>(send.as_raw_fd(), &iov, &cmsg, MsgFlags::empty(), None).unwrap();
     thread.join().unwrap();
 }
 
@@ -1009,7 +1009,7 @@ pub fn test_sendmsg_empty_cmsgs() {
 
     {
         let iov = [IoVec::from_slice(b"hello")];
-        assert_eq!(sendmsg::<UnixAddr>(fd1, &iov, &[], MsgFlags::empty(), None).unwrap(), 5);
+        assert_eq!(sendmsg::<()>(fd1, &iov, &[], MsgFlags::empty(), None).unwrap(), 5);
         close(fd1).unwrap();
     }
 
@@ -1017,7 +1017,7 @@ pub fn test_sendmsg_empty_cmsgs() {
         let mut buf = [0u8; 5];
         let iov = [IoVec::from_mut_slice(&mut buf[..])];
         let mut cmsgspace = cmsg_space!([RawFd; 1]);
-        let msg = recvmsg::<UnixAddr>(fd2, &iov, Some(&mut cmsgspace), MsgFlags::empty()).unwrap();
+        let msg = recvmsg::<()>(fd2, &iov, Some(&mut cmsgspace), MsgFlags::empty()).unwrap();
 
         for _ in msg.cmsgs() {
             panic!("unexpected cmsg");
@@ -1058,7 +1058,7 @@ fn test_scm_credentials() {
         let cmsg = ControlMessage::ScmCredentials(&cred);
         #[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
         let cmsg = ControlMessage::ScmCreds;
-        assert_eq!(sendmsg::<UnixAddr>(send, &iov, &[cmsg], MsgFlags::empty(), None).unwrap(), 5);
+        assert_eq!(sendmsg::<()>(send, &iov, &[cmsg], MsgFlags::empty(), None).unwrap(), 5);
         close(send).unwrap();
     }
 
@@ -1066,7 +1066,7 @@ fn test_scm_credentials() {
         let mut buf = [0u8; 5];
         let iov = [IoVec::from_mut_slice(&mut buf[..])];
         let mut cmsgspace = cmsg_space!(UnixCredentials);
-        let msg = recvmsg::<UnixAddr>(recv, &iov, Some(&mut cmsgspace), MsgFlags::empty()).unwrap();
+        let msg = recvmsg::<()>(recv, &iov, Some(&mut cmsgspace), MsgFlags::empty()).unwrap();
         let mut received_cred = None;
 
         for cmsg in msg.cmsgs() {
@@ -1143,7 +1143,7 @@ fn test_impl_scm_credentials_and_rights(mut space: Vec<u8>) {
             ControlMessage::ScmCredentials(&cred),
             ControlMessage::ScmRights(&fds),
         ];
-        assert_eq!(sendmsg(send, &iov, &cmsgs, MsgFlags::empty(), None).unwrap(), 5);
+        assert_eq!(sendmsg::<()>(send, &iov, &cmsgs, MsgFlags::empty(), None).unwrap(), 5);
         close(r).unwrap();
         close(send).unwrap();
     }
@@ -1151,7 +1151,7 @@ fn test_impl_scm_credentials_and_rights(mut space: Vec<u8>) {
     {
         let mut buf = [0u8; 5];
         let iov = [IoVec::from_mut_slice(&mut buf[..])];
-        let msg = recvmsg(recv, &iov, Some(&mut space), MsgFlags::empty()).unwrap();
+        let msg = recvmsg::<()>(recv, &iov, Some(&mut space), MsgFlags::empty()).unwrap();
         let mut received_cred = None;
 
         assert_eq!(msg.cmsgs().count(), 2, "expected 2 cmsgs");
@@ -1334,7 +1334,7 @@ pub fn test_recv_ipv4pktinfo() {
         let mut buf = [0u8; 8];
         let iovec = [IoVec::from_mut_slice(&mut buf)];
         let mut space = cmsg_space!(libc::in_pktinfo);
-        let msg = recvmsg(
+        let msg = recvmsg::<()>(
             receive,
             &iovec,
             Some(&mut space),
@@ -1424,7 +1424,7 @@ pub fn test_recvif() {
         let mut buf = [0u8; 8];
         let iovec = [IoVec::from_mut_slice(&mut buf)];
         let mut space = cmsg_space!(libc::sockaddr_dl, libc::in_addr);
-        let msg = recvmsg::<SockaddrIn>(
+        let msg = recvmsg::<()>(
             receive,
             &iovec,
             Some(&mut space),
@@ -1536,7 +1536,7 @@ pub fn test_recv_ipv6pktinfo() {
         let mut buf = [0u8; 8];
         let iovec = [IoVec::from_mut_slice(&mut buf)];
         let mut space = cmsg_space!(libc::in6_pktinfo);
-        let msg = recvmsg::<SockaddrIn6>(
+        let msg = recvmsg::<()>(
             receive,
             &iovec,
             Some(&mut space),
@@ -1646,7 +1646,7 @@ fn test_recvmsg_timestampns() {
     let mut buffer = vec![0u8; message.len()];
     let mut cmsgspace = nix::cmsg_space!(TimeSpec);
     let iov = [IoVec::from_mut_slice(&mut buffer)];
-    let r = recvmsg(in_socket, &iov, Some(&mut cmsgspace), flags).unwrap();
+    let r = recvmsg::<()>(in_socket, &iov, Some(&mut cmsgspace), flags).unwrap();
     let rtime = match r.cmsgs().next() {
         Some(ControlMessageOwned::ScmTimestampns(rtime)) => rtime,
         Some(_) => panic!("Unexpected control message"),
@@ -1703,7 +1703,7 @@ fn test_recvmmsg_timestampns() {
             cmsg_buffer: Some(&mut cmsgspace),
         },
     ];
-    let r: Vec<RecvMsg<SockaddrIn>> = recvmmsg(in_socket, &mut data, flags, None).unwrap();
+    let r: Vec<RecvMsg<()>> = recvmmsg(in_socket, &mut data, flags, None).unwrap();
     let rtime = match r[0].cmsgs().next() {
         Some(ControlMessageOwned::ScmTimestampns(rtime)) => rtime,
         Some(_) => panic!("Unexpected control message"),
@@ -1778,7 +1778,7 @@ fn test_recvmsg_rxq_ovfl() {
 
             let iov = [IoVec::from_mut_slice(&mut buffer)];
 
-            match recvmsg::<SockaddrIn>(
+            match recvmsg::<()>(
                 in_socket,
                 &iov,
                 Some(&mut cmsgspace),
@@ -2013,5 +2013,5 @@ pub fn test_txtime() {
 
     let mut rbuf = [0u8; 2048];
     let iov2 = [nix::sys::uio::IoVec::from_mut_slice(&mut rbuf)];
-    recvmsg::<SockaddrIn>(rsock, &iov2, None, MsgFlags::empty()).unwrap();
+    recvmsg::<()>(rsock, &iov2, None, MsgFlags::empty()).unwrap();
 }
