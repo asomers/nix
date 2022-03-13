@@ -1342,7 +1342,39 @@ impl<'a> ControlMessage<'a> {
 /// as with sendto.
 ///
 /// Allocates if cmsgs is nonempty.
-// TODO: should we create a separate function to use when addr==None, just so it won't be generic?
+///
+/// # Examples
+/// When not directing to any specific address, use `()` for the generic type
+/// ```
+/// # use nix::sys::socket::*;
+/// # use nix::unistd::pipe;
+/// # use nix::sys::uio::IoVec;
+/// let (fd1, fd2) = socketpair(AddressFamily::Unix, SockType::Stream, None,
+///     SockFlag::empty())
+///     .unwrap();
+/// let (r, w) = pipe().unwrap();
+///
+/// let iov = [IoVec::from_slice(b"hello")];
+/// let fds = [r];
+/// let cmsg = ControlMessage::ScmRights(&fds);
+/// sendmsg::<()>(fd1, &iov, &[cmsg], MsgFlags::empty(), None).unwrap();
+/// ```
+/// When directing to a specific address, the generic type will be inferred.
+/// ```
+/// # use nix::sys::socket::*;
+/// # use nix::unistd::pipe;
+/// # use nix::sys::uio::IoVec;
+/// # use std::str::FromStr;
+/// let localhost = SockaddrIn::from_str("1.2.3.4:8080").unwrap();
+/// let fd = socket(AddressFamily::Inet, SockType::Datagram, SockFlag::empty(),
+///     None).unwrap();
+/// let (r, w) = pipe().unwrap();
+///
+/// let iov = [IoVec::from_slice(b"hello")];
+/// let fds = [r];
+/// let cmsg = ControlMessage::ScmRights(&fds);
+/// sendmsg(fd, &iov, &[cmsg], MsgFlags::empty(), Some(&localhost)).unwrap();
+/// ```
 pub fn sendmsg<S>(fd: RawFd, iov: &[IoVec<&[u8]>], cmsgs: &[ControlMessage],
                flags: MsgFlags, addr: Option<&S>) -> Result<usize>
     where S: SockaddrLike
