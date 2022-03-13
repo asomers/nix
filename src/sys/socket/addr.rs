@@ -1341,6 +1341,8 @@ impl Hash for SockaddrStorage {
     fn hash<H: Hasher>(&self, s: &mut H) {
         unsafe {
             match self.sa.0.sa_family as i32 {
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                libc::AF_ALG => self.alg.hash(s),
                 libc::AF_INET => self.sin.hash(s),
                 libc::AF_INET6 => self.sin6.hash(s),
                 #[cfg(any(target_os = "dragonfly",
@@ -1351,13 +1353,21 @@ impl Hash for SockaddrStorage {
                           target_os = "netbsd",
                           target_os = "openbsd"))]
                 libc::AF_LINK => self.dl.hash(s),
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                libc::AF_NETLINK => self.nl.hash(s),
                 #[cfg(any(target_os = "android",
                           target_os = "linux",
                           target_os = "fuchsia"
                 ))]
                 libc::AF_PACKET => self.dl.hash(s),
+                // XXX OSX uses the same value for AF_SYS_CONTROL as for
+                // AF_INET.  So methods like hash can't distinguish between the
+                // two.  hash will therefore produce the wrong result.
+                // libc::AF_SYS_CONTROL => self.sctl.hash(s),
+                libc::AF_UNIX => self.su.hash(s),
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                libc::AF_VSOCK => self.vsock.hash(s),
                 _ => self.ss.hash(s)
-                // TODO: other sockaddr types
             }
         }
     }
