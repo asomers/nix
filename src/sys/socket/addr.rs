@@ -960,13 +960,28 @@ impl SockaddrLike for Sockaddr {
 }
 
 /// An IPv4 socket address
-// This is identical to std::net::SocketAddrV4.  But the standard library
+// This is identical to net::SocketAddrV4.  But the standard library
 // doesn't allow direct access to the libc fields, which we need.  So we
 // reimplement it here.
 #[cfg(feature = "net")]
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct SockaddrIn(libc::sockaddr_in);
+
+#[cfg(feature = "net")]
+impl SockaddrIn {
+    /// Returns the IP address associated with this socket address, in native
+    /// endian.
+    pub const fn ip(&self) -> libc::in_addr_t {
+        u32::from_be(self.0.sin_addr.s_addr)
+    }
+
+    /// Returns the port number associated with this socket address, in native
+    /// endian.
+    pub const fn port(&self) -> u16 {
+        u16::from_be(self.0.sin_port)
+    }
+}
 
 #[cfg(feature = "net")]
 impl private::Sealed for SockaddrIn {}
@@ -1027,10 +1042,10 @@ impl From<net::SocketAddrV4> for SockaddrIn {
 
 #[cfg(feature = "net")]
 impl std::str::FromStr for SockaddrIn {
-    type Err = std::net::AddrParseError;
+    type Err = net::AddrParseError;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        std::net::SocketAddrV4::from_str(s).map(SockaddrIn::from)
+        net::SocketAddrV4::from_str(s).map(SockaddrIn::from)
     }
 }
 
@@ -1038,6 +1053,48 @@ impl std::str::FromStr for SockaddrIn {
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct SockaddrIn6(libc::sockaddr_in6);
+
+#[cfg(feature = "net")]
+impl SockaddrIn6 {
+    /// Returns the flow information associated with this address.
+    pub const fn flowinfo(&self) -> u32 {
+        self.0.sin6_flowinfo
+    }
+
+    /// Returns the IP address associated with this socket address.
+    pub fn ip(&self) -> net::Ipv6Addr {
+        net::Ipv6Addr::new(
+            u16::from(self.0.sin6_addr.s6_addr[0]) << 8 |
+            u16::from(self.0.sin6_addr.s6_addr[1]),
+            u16::from(self.0.sin6_addr.s6_addr[2]) << 8 |
+            u16::from(self.0.sin6_addr.s6_addr[3]),
+            u16::from(self.0.sin6_addr.s6_addr[4]) << 8 |
+            u16::from(self.0.sin6_addr.s6_addr[5]),
+            u16::from(self.0.sin6_addr.s6_addr[6]) << 8 |
+            u16::from(self.0.sin6_addr.s6_addr[7]),
+            u16::from(self.0.sin6_addr.s6_addr[8]) << 8 |
+            u16::from(self.0.sin6_addr.s6_addr[9]),
+            u16::from(self.0.sin6_addr.s6_addr[10]) << 8 |
+            u16::from(self.0.sin6_addr.s6_addr[11]),
+            u16::from(self.0.sin6_addr.s6_addr[12]) << 8 |
+            u16::from(self.0.sin6_addr.s6_addr[13]),
+            u16::from(self.0.sin6_addr.s6_addr[14]) << 8 |
+            u16::from(self.0.sin6_addr.s6_addr[15]),
+        )
+    }
+
+    /// Returns the port number associated with this socket address, in native
+    /// endian.
+    pub const fn port(&self) -> u16 {
+        u16::from_be(self.0.sin6_port)
+    }
+
+    /// Returns the scope ID associated with this address.
+    pub const fn scope_id(&self) -> u32 {
+        self.0.sin6_scope_id
+    }
+}
+
 #[cfg(feature = "net")]
 impl private::Sealed for SockaddrIn6 {}
 #[cfg(feature = "net")]
@@ -1065,6 +1122,17 @@ impl AsRef<libc::sockaddr_in6> for SockaddrIn6 {
 }
 
 #[cfg(feature = "net")]
+impl fmt::Display for SockaddrIn6 {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // These things are really hard to display properly.  Easier to let std
+        // do it.
+        let std = net::SocketAddrV6::new(self.ip(), self.port(),
+            self.flowinfo(), self.scope_id());
+        std.fmt(f)
+    }
+}
+
+#[cfg(feature = "net")]
 impl From<net::SocketAddrV6> for SockaddrIn6 {
     fn from(addr: net::SocketAddrV6) -> Self {
         Self(libc::sockaddr_in6{
@@ -1082,6 +1150,16 @@ impl From<net::SocketAddrV6> for SockaddrIn6 {
         })
     }
 }
+
+#[cfg(feature = "net")]
+impl std::str::FromStr for SockaddrIn6 {
+    type Err = net::AddrParseError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        net::SocketAddrV6::from_str(s).map(SockaddrIn6::from)
+    }
+}
+
 
 #[derive(Clone, Copy, Eq)]
 #[repr(C)]
@@ -2137,6 +2215,18 @@ mod tests {
         fn display() {
             let s = "127.0.0.1:8080";
             let addr = SockaddrIn::from_str(s).unwrap();
+            assert_eq!(s, format!("{}", addr));
+        }
+    }
+
+    mod sockaddr_in6 {
+        use super::*;
+        use std::str::FromStr;
+
+        #[test]
+        fn display() {
+            let s = "[1234:5678:90ab:cdef::1111:2222%42]:8080";
+            let addr = SockaddrIn6::from_str(s).unwrap();
             assert_eq!(s, format!("{}", addr));
         }
     }
