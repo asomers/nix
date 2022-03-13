@@ -1209,6 +1209,23 @@ impl std::str::FromStr for SockaddrIn6 {
 }
 
 
+/// A container for any sockaddr type
+///
+/// Just like C's `sockaddr_storage`, this type is large enough to hold any type
+/// of sockaddr.  It can be used as an argument with functions like [`bind`] and
+/// [`gethostname`].  Though it is a union, it can be safely accessed through
+/// the `as_*` methods.
+/// # Example
+/// ```
+/// # use nix::sys::socket::*;
+/// # use std::str::FromStr;
+/// let localhost = SockaddrIn::from_str("127.0.0.1:8081").unwrap();
+/// let fd = socket(AddressFamily::Inet, SockType::Stream, SockFlag::empty(),
+///     None).unwrap();
+/// bind(fd, &localhost).expect("bind");
+/// let ss: SockaddrStorage = getsockname(fd).expect("getsockname");
+/// assert_eq!(&localhost, ss.as_sockaddr_in().unwrap());
+/// ```
 #[derive(Clone, Copy, Eq)]
 #[repr(C)]
 pub union SockaddrStorage {
