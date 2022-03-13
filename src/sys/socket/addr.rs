@@ -1792,6 +1792,7 @@ pub mod sys_control {
     use std::{fmt, mem};
     use std::os::unix::io::RawFd;
     use crate::{Errno, Result};
+    use super::{private, SockaddrLike};
 
     // FIXME: Move type into `libc`
     #[repr(C)]
@@ -1818,14 +1819,14 @@ pub mod sys_control {
             -> Option<Self> where Self: Sized
         {
             if let Some(l) = len {
-                if l != mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t {
+                if l != mem::size_of::<libc::sockaddr_ctl>() as libc::socklen_t {
                     return None;
                 }
             }
             if (*addr).sa_family as i32 != libc::AF_INET6 as i32 {
                 return None;
             }
-            Some(SysControlAddr(*(addr as *const libc::sockaddr_in6)))
+            Some(SysControlAddr(*(addr as *const libc::sockaddr_ctl)))
         }
     }
 
@@ -2201,7 +2202,8 @@ mod tests {
                   target_os = "macos",
                   target_os = "illumos"
                   ))]
-        use super::{*, super::socklen_t};
+        use super::{*, super::super::socklen_t};
+
         #[cfg(any(target_os = "ios",
                   target_os = "macos"
                   ))]
@@ -2210,7 +2212,7 @@ mod tests {
             let bytes = [20i8, 18, 1, 0, 24, 3, 0, 0, 108, 111, 48, 0, 0, 0, 0, 0];
             let sa = bytes.as_ptr() as *const libc::sockaddr;
             let len = Some(bytes.len() as socklen_t);
-            let sock_addr = unsafe { SockaddrStorage::from_raw(sa, len) };
+            let sock_addr = unsafe { SockaddrStorage::from_raw(sa, len) }.unwrap();
             assert_eq!(sock_addr.family(), Some(AddressFamily::Link));
             match sock_addr.as_sockaddr_dl() {
                 Some(dl) => assert_eq!(dl.addr(), [48u8, 0, 9, 0, 0, 0]),
@@ -2242,20 +2244,17 @@ mod tests {
             let bytes = [25u8, 0, 0, 0, 6, 0, 6, 0, 24, 101, 144, 221, 76, 176];
             let ptr = bytes.as_ptr();
             let sa = ptr as *const libc::sockaddr;
-            let _sock_addr = unsafe { SockAddr::from_libc_sockaddr(sa) };
+            let len = Some(bytes.len() as socklen_t);
+            let _sock_addr = unsafe { SockaddrStorage::from_raw(sa, len) };
 
             assert!(_sock_addr.is_some());
 
             let sock_addr = _sock_addr.unwrap();
 
-            assert_eq!(sock_addr.family(), AddressFamily::Link);
+            assert_eq!(sock_addr.family().unwrap(), AddressFamily::Link);
 
-            match sock_addr {
-                SockAddr::Link(ether_addr) => {
-                    assert_eq!(ether_addr.addr(), [24u8, 101, 144, 221, 76, 176]);
-                },
-                _ => { unreachable!() }
-            };
+            assert_eq!(sock_addr.as_sockaddr_dl().unwrap().addr(),
+                    [24u8, 101, 144, 221, 76, 176]);
         }
     }
 

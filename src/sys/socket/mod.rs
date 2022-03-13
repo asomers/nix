@@ -46,6 +46,7 @@ pub use self::addr::{
     LinkAddr
 };
 #[cfg(any(target_os = "illumos", target_os = "solaris"))]
+#[allow(deprecated)]
 pub use self::addr::{
     AddressFamily,
     SockAddr,
@@ -60,6 +61,8 @@ pub use self::addr::{
     Ipv6Addr,
 };
 
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+pub use crate::sys::socket::addr::sys_control::SysControlAddr;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub use crate::sys::socket::addr::netlink::NetlinkAddr;
 #[cfg(any(target_os = "android", target_os = "linux"))]

@@ -1,4 +1,4 @@
-use nix::sys::socket::{AddressFamily, InetAddr, SockaddrLike,
+use nix::sys::socket::{AddressFamily, InetAddr,// SockaddrLike,
     UnixAddr, getsockname, sockaddr, sockaddr_in6};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -1216,13 +1216,14 @@ pub fn test_unixdomain() {
 #[test]
 pub fn test_syscontrol() {
     use nix::errno::Errno;
-    use nix::sys::socket::{socket, SockAddr, SockType, SockFlag, SockProtocol};
+    use nix::sys::socket::{socket, SysControlAddr, SockType, SockFlag, SockProtocol};
 
     let fd = socket(AddressFamily::System, SockType::Datagram,
                     SockFlag::empty(), SockProtocol::KextControl)
              .expect("socket failed");
-    let _sockaddr = SockAddr::new_sys_control(fd, "com.apple.net.utun_control", 0).expect("resolving sys_control name failed");
-    assert_eq!(SockAddr::new_sys_control(fd, "foo.bar.lol", 0).err(), Some(Errno::ENOENT));
+    SysControlAddr::from_name(fd, "com.apple.net.utun_control", 0)
+        .expect("resolving sys_control name failed");
+    assert_eq!(SysControlAddr::from_name(fd, "foo.bar.lol", 0).err(), Some(Errno::ENOENT));
 
     // requires root privileges
     // connect(fd, &sockaddr).expect("connect failed");
@@ -1242,6 +1243,7 @@ fn loopback_address(family: AddressFamily) -> Option<nix::ifaddrs::InterfaceAddr
     use std::io::Write;
     use nix::ifaddrs::getifaddrs;
     use nix::net::if_::*;
+    use nix::sys::socket::SockaddrLike;
 
     let addrs = match getifaddrs() {
         Ok(iter) => iter,
