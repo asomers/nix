@@ -1,4 +1,4 @@
-use nix::sys::socket::{AddressFamily, InetAddr,// SockaddrLike,
+use nix::sys::socket::{AddressFamily, InetAddr,
     UnixAddr, getsockname, sockaddr, sockaddr_in6};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
