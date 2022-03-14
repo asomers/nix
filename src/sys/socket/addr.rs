@@ -1269,6 +1269,9 @@ impl SockaddrLike for SockaddrStorage {
             // copy it.  If addr is of a variable length type and len is not
             // available, then there's nothing we can do.
             match (*addr).sa_family as i32 {
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                libc::AF_ALG => AlgAddr::from_raw(addr, l)
+                    .map(|alg| Self { alg}),
                 libc::AF_INET => SockaddrIn::from_raw(addr, l)
                     .map(|sin| Self{ sin: sin}),
                 libc::AF_INET6 => SockaddrIn6::from_raw(addr, l)
@@ -1282,12 +1285,22 @@ impl SockaddrLike for SockaddrStorage {
                           target_os = "openbsd"))]
                 libc::AF_LINK => LinkAddr::from_raw(addr, l)
                     .map(|dl| Self{ dl: dl}),
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                libc::AF_NETLINK => NetlinkAddr::from_raw(addr, l)
+                    .map(|nl| Self{ nl }),
                 #[cfg(any(target_os = "android",
                           target_os = "fuchsia",
                           target_os = "linux"
                 ))]
                 libc::AF_PACKET => LinkAddr::from_raw(addr, l)
                     .map(|dl| Self{ dl: dl}),
+                #[cfg(all(feature = "ioctl",
+                          any(target_os = "ios", target_os = "macos")))]
+                libc::AF_SYSTEM => SysControlAddr::from_raw(addr, l)
+                    .map(|sctl| Self {sctl}),
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                libc::AF_VSOCK => VsockAddr::from_raw(addr, l)
+                    .map(|vsock| Self{vsock}),
                 _ => None
             }
         }
