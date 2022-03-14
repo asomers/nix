@@ -976,18 +976,6 @@ impl SockaddrLike for () {
     }
 }
 
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Sockaddr(libc::sockaddr);
-impl private::Sealed for Sockaddr {}
-impl SockaddrLike for Sockaddr {
-    unsafe fn from_raw(_addr: *const libc::sockaddr, _len: Option<libc::socklen_t>)
-        -> Option<Self> where Self: Sized
-    {
-        unimplemented!()
-    }
-}
-
 /// An IPv4 socket address
 // This is identical to net::SocketAddrV4.  But the standard library
 // doesn't allow direct access to the libc fields, which we need.  So we
@@ -1215,6 +1203,7 @@ impl std::str::FromStr for SockaddrIn6 {
 /// of sockaddr.  It can be used as an argument with functions like [`bind`] and
 /// [`gethostname`].  Though it is a union, it can be safely accessed through
 /// the `as_*` methods.
+///
 /// # Example
 /// ```
 /// # use nix::sys::socket::*;
@@ -1237,7 +1226,6 @@ pub union SockaddrStorage {
     dl: LinkAddr,
     #[cfg(any(target_os = "android", target_os = "linux"))]
     nl: NetlinkAddr,
-    sa: Sockaddr,
     #[cfg(all(feature = "ioctl", any(target_os = "ios", target_os = "macos")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "ioctl")))]
     sctl: SysControlAddr,
@@ -1370,7 +1358,7 @@ impl fmt::Debug for SockaddrStorage {
 impl fmt::Display for SockaddrStorage {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         unsafe {
-            match self.sa.0.sa_family as i32 {
+            match self.ss.ss_family as i32 {
                 #[cfg(any(target_os = "android", target_os = "linux"))]
                 libc::AF_ALG => self.alg.fmt(f),
                 #[cfg(feature = "net")]
@@ -1405,7 +1393,7 @@ impl fmt::Display for SockaddrStorage {
 impl Hash for SockaddrStorage {
     fn hash<H: Hasher>(&self, s: &mut H) {
         unsafe {
-            match self.sa.0.sa_family as i32 {
+            match self.ss.ss_family as i32 {
                 #[cfg(any(target_os = "android", target_os = "linux"))]
                 libc::AF_ALG => self.alg.hash(s),
                 libc::AF_INET => self.sin.hash(s),
@@ -1439,7 +1427,7 @@ impl Hash for SockaddrStorage {
 impl PartialEq for SockaddrStorage {
     fn eq(&self, other: &Self) -> bool {
         unsafe {
-            match (self.sa.0.sa_family as i32, other.sa.0.sa_family as i32) {
+            match (self.ss.ss_family as i32, other.ss.ss_family as i32) {
                 #[cfg(any(target_os = "android", target_os = "linux"))]
                 (libc::AF_ALG, libc::AF_ALG) => self.alg == other.alg,
                 (libc::AF_INET, libc::AF_INET) => self.sin == other.sin,
