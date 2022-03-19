@@ -1248,6 +1248,7 @@ impl SockaddrLike for SockaddrStorage {
             return None;
         }
         if let Some(len) = l {
+            // TODO: sanity check len
             let mut ss: libc::sockaddr_storage = mem::zeroed();
             let ssp = &mut ss as *mut libc::sockaddr_storage as *mut u8;
             ptr::copy(addr as *const u8, ssp, len as usize);
