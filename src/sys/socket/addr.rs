@@ -1364,6 +1364,20 @@ impl SockaddrStorage {
     #[cfg(feature = "net")]
     accessors!{as_sockaddr_in6, as_sockaddr_in6_mut, SockaddrIn6,
         AddressFamily::Inet6, libc::sockaddr_in6, sin6}
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    accessors!{as_sockaddr_nl, as_sockaddr_nl_mut, NetlinkAddr,
+        AddressFamily::Netlink, libc::sockaddr_nl, nl}
+
+    #[cfg(all(feature = "ioctl", any(target_os = "ios", target_os = "macos")))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "ioctl")))]
+    accessors!{as_sockaddr_sctl, as_sockaddr_sctl_mut, SysControlAddr,
+        AddressFamily::SysControl, libc::sockaddr_sctl, sctl}
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[cfg_attr(docsrs, doc(cfg(all())))]
+    accessors!{as_sockaddr_vsock, as_sockaddr_vsock_mut, VsockAddr,
+        AddressFamily::Vsock, libc::sockaddr_vsock, vsock}
 }
 
 impl fmt::Debug for SockaddrStorage {
