@@ -1301,11 +1301,50 @@ impl SockaddrLike for SockaddrStorage {
     }
 }
 
+macro_rules! accessors {
+    (
+        //#![$meta:meta],
+        $fname:ident,
+        $fname_mut:ident,
+        $sockty:ty,
+        $family:expr,
+        $libc_ty:ty,
+        $field:ident) =>
+    {
+        //#[cfg($meta)]
+        pub fn $fname(&self) -> Option<&$sockty> {
+            if self.family() == Some($family) &&
+              self.len() >= mem::size_of::<$libc_ty>() as libc::socklen_t
+            {
+                // Safe because family and len are validated
+                Some(unsafe{&self.$field})
+            } else {
+                None
+            }
+        }
+
+        pub fn $fname_mut(&mut self) -> Option<&mut $sockty> {
+            if self.family() == Some($family) &&
+              self.len() >= mem::size_of::<$libc_ty>() as libc::socklen_t
+            {
+                // Safe because family and len are validated
+                Some(unsafe{&mut self.$field})
+            } else {
+                None
+            }
+        }
+    }
+}
+
 impl SockaddrStorage {
     #[cfg(feature = "net")]
     pub fn from_std(_std: &net::SocketAddr) -> Self {
         unimplemented!()
     }
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    accessors!{as_sockaddr_alg, as_sockaddr_alg_mut, AlgAddr,
+        AddressFamily::Alg, libc::sockaddr_alg, alg}
 
     #[cfg(any(target_os = "dragonfly",
               target_os = "freebsd",
@@ -1315,40 +1354,16 @@ impl SockaddrStorage {
               target_os = "netbsd",
               target_os = "openbsd"))]
     #[cfg(feature = "net")]
-    pub fn as_sockaddr_dl(&self) -> Option<&LinkAddr> {
-        if self.family() == Some(AddressFamily::Link) &&
-          self.len() >= mem::size_of::<libc::sockaddr_dl>() as libc::socklen_t
-        {
-            // Safe because family and len are validated
-            Some(unsafe{&self.dl})
-        } else {
-            None
-        }
-    }
+    accessors!{as_sockaddr_dl, as_sockaddr_dl_mut, LinkAddr,
+        AddressFamily::Link, libc::sockaddr_dl, dl}
 
     #[cfg(feature = "net")]
-    pub fn as_sockaddr_in(&self) -> Option<&SockaddrIn> {
-        if self.family() == Some(AddressFamily::Inet) &&
-          self.len() >= mem::size_of::<libc::sockaddr_in>() as libc::socklen_t
-        {
-            // Safe because family and len are validated
-            Some(unsafe{&self.sin})
-        } else {
-            None
-        }
-    }
+    accessors!{as_sockaddr_in, as_sockaddr_in_mut, SockaddrIn,
+        AddressFamily::Inet, libc::sockaddr_in, sin}
 
     #[cfg(feature = "net")]
-    pub fn as_sockaddr_in6(&self) -> Option<&SockaddrIn6> {
-        if self.family() == Some(AddressFamily::Inet6) &&
-          self.len() >= mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t
-        {
-            // Safe because family and len are validated
-            Some(unsafe{&self.sin6})
-        } else {
-            None
-        }
-    }
+    accessors!{as_sockaddr_in6, as_sockaddr_in6_mut, SockaddrIn6,
+        AddressFamily::Inet6, libc::sockaddr_in6, sin6}
 }
 
 impl fmt::Debug for SockaddrStorage {
