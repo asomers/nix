@@ -1248,11 +1248,16 @@ impl SockaddrLike for SockaddrStorage {
             return None;
         }
         if let Some(len) = l {
-            // TODO: sanity check len
-            let mut ss: libc::sockaddr_storage = mem::zeroed();
-            let ssp = &mut ss as *mut libc::sockaddr_storage as *mut u8;
-            ptr::copy(addr as *const u8, ssp, len as usize);
-            Some(Self{ss: ss})
+            let ulen = len as usize;
+            if ulen < offset_of!(libc::sockaddr, sa_data) ||
+                ulen > mem::size_of::<libc::sockaddr_storage>() {
+                None
+            } else{
+                let mut ss: libc::sockaddr_storage = mem::zeroed();
+                let ssp = &mut ss as *mut libc::sockaddr_storage as *mut u8;
+                ptr::copy(addr as *const u8, ssp, len as usize);
+                Some(Self{ss: ss})
+            }
         } else {
             // If length is not available and addr is of a fixed-length type,
             // copy it.  If addr is of a variable length type and len is not
