@@ -874,6 +874,15 @@ impl UnixAddr {
 
 impl private::SockaddrLikePriv for UnixAddr {}
 impl SockaddrLike for UnixAddr {
+    #[cfg(any(target_os = "android",
+              target_os = "fuchsia",
+              target_os = "illumos",
+              target_os = "linux"
+    ))]
+    fn len(&self) -> libc::socklen_t {
+        self.sun_len.into()
+    }
+
     unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
         -> Option<Self> where Self: Sized
     {
@@ -2319,13 +2328,6 @@ mod datalink {
     pub struct LinkAddr(pub(in super::super) libc::sockaddr_dl);
 
     impl LinkAddr {
-        /// Total length of sockaddr
-        #[cfg(not(target_os = "illumos"))]
-        #[cfg_attr(docsrs, doc(cfg(all())))]
-        pub fn len(&self) -> usize {
-            self.0.sdl_len as usize
-        }
-
         /// interface index, if != 0, system given index for interface
         pub fn ifindex(&self) -> usize {
             self.0.sdl_index as usize
