@@ -1408,11 +1408,6 @@ macro_rules! accessors {
 }
 
 impl SockaddrStorage {
-    #[cfg(feature = "net")]
-    pub fn from_std(_std: &net::SocketAddr) -> Self {
-        unimplemented!()
-    }
-
     #[cfg(any(target_os = "android", target_os = "linux"))]
     accessors!{as_alg_addr, as_alg_addr_mut, AlgAddr,
         AddressFamily::Alg, libc::sockaddr_alg, alg}
@@ -1495,6 +1490,26 @@ impl fmt::Display for SockaddrStorage {
                 libc::AF_VSOCK => self.vsock.fmt(f),
                 _ => "<Address family unspecified>".fmt(f)
             }
+        }
+    }
+}
+
+impl From<net::SocketAddrV4> for SockaddrStorage {
+    fn from(s: net::SocketAddrV4) -> Self {
+        unsafe {
+            let mut ss: Self = mem::zeroed();
+            ss.sin = SockaddrIn::from(s);
+            ss
+        }
+    }
+}
+
+impl From<net::SocketAddrV6> for SockaddrStorage {
+    fn from(s: net::SocketAddrV6) -> Self {
+        unsafe {
+            let mut ss: Self = mem::zeroed();
+            ss.sin6 = SockaddrIn6::from(s);
+            ss
         }
     }
 }
