@@ -973,6 +973,20 @@ pub trait SockaddrLike: private::SockaddrLikePriv {
         -> Option<Self> where Self: Sized;
 
     /// Return the address family of this socket
+    ///
+    /// # Examples
+    /// One common use is to match on the family of a union type, like this:
+    /// ```
+    /// # use nix::sys::socket::*;
+    /// let fd = socket(AddressFamily::Inet, SockType::Stream,
+    ///     SockFlag::empty(), None).unwrap();
+    /// let ss: SockaddrStorage = getsockname(fd).unwrap();
+    /// match ss.family().unwrap() {
+    ///     AddressFamily::Inet => println!("{}", ss.as_sockaddr_in().unwrap()),
+    ///     AddressFamily::Inet6 => println!("{}", ss.as_sockaddr_in6().unwrap()),
+    ///     _ => println!("Unexpected address family")
+    /// }
+    /// ```
     fn family(&self) -> Option<AddressFamily> {
         // Safe since all implementors have a sa_family field at the same
         // address, and they're all repr(C)
@@ -990,7 +1004,11 @@ pub trait SockaddrLike: private::SockaddrLikePriv {
                   target_os = "macos",
                   target_os = "netbsd",
                   target_os = "openbsd"))] {
-            /// Return the length of valid data in the sockaddr structure
+            /// Return the length of valid data in the sockaddr structure.
+            ///
+            /// For fixed-size sockaddrs, this should be the size of the
+            /// structure.  But for variable-sized types like [`UnixAddr`] it
+            /// may be less.
             fn len(&self) -> libc::socklen_t {
                 // Safe since all implementors have a sa_len field at the same
                 // address, and they're all repr(transparent).
@@ -1000,7 +1018,11 @@ pub trait SockaddrLike: private::SockaddrLikePriv {
                 }.into()
             }
         } else {
-            /// Return the length of the sockaddr structure
+            /// Return the length of valid data in the sockaddr structure.
+            ///
+            /// For fixed-size sockaddrs, this should be the size of the
+            /// structure.  But for variable-sized types like [`UnixAddr`] it
+            /// may be less.
             fn len(&self) -> libc::socklen_t {
                 // No robust default implementation is possible without an
                 // sa_len field.  Implementors with a variable size must
