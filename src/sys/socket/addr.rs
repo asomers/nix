@@ -373,12 +373,18 @@ impl AddressFamily {
 feature! {
 #![feature = "net"]
 
+#[deprecated(
+    since = "0.24.0",
+    note = "use SockaddrIn, SockaddrIn6, or SockaddrStorage instead"
+)]
+#[allow(missing_docs)]  // Since they're all deprecated anyway
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum InetAddr {
     V4(libc::sockaddr_in),
     V6(libc::sockaddr_in6),
 }
 
+#[allow(deprecated)]
 impl InetAddr {
     #[allow(clippy::needless_update)]   // It isn't needless on all OSes
     pub fn from_std(std: &net::SocketAddr) -> InetAddr {
@@ -472,6 +478,7 @@ impl InetAddr {
     }
 }
 
+#[allow(deprecated)]
 impl fmt::Display for InetAddr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -1573,6 +1580,7 @@ mod private {
     note = "use SockaddrLike or SockaddrStorage instead"
 )]
 #[allow(missing_docs)]  // Since they're all deprecated anyway
+#[allow(deprecated)]
 #[non_exhaustive]
 pub enum SockAddr {
     #[cfg(feature = "net")]

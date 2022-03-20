@@ -17,7 +17,6 @@ use crate::sys::{
     uio::IoVec
 };
 
-#[warn(missing_docs)]
 mod addr;
 #[deny(missing_docs)]
 pub mod sockopt;
@@ -34,13 +33,13 @@ pub use self::addr::{SockaddrIn, SockaddrIn6, SockaddrLike, SockaddrStorage};
 #[allow(deprecated)]
 pub use self::addr::{
     AddressFamily,
+    InetAddr,
     SockAddr,
     UnixAddr,
 };
 #[cfg(not(any(target_os = "illumos", target_os = "solaris")))]
 #[cfg(feature = "net")]
 pub use self::addr::{
-    InetAddr,
     IpAddr,
     Ipv4Addr,
     Ipv6Addr,
