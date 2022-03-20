@@ -1371,13 +1371,13 @@ impl SockaddrStorage {
 
     #[cfg(all(feature = "ioctl", any(target_os = "ios", target_os = "macos")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "ioctl")))]
-    accessors!{as_sockaddr_sctl, as_sockaddr_sctl_mut, SysControlAddr,
-        AddressFamily::SysControl, libc::sockaddr_sctl, sctl}
+    accessors!{as_sockaddr_ctl, as_sockaddr_ctl_mut, SysControlAddr,
+        AddressFamily::System, libc::sockaddr_ctl, sctl}
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
-    accessors!{as_sockaddr_vsock, as_sockaddr_vsock_mut, VsockAddr,
-        AddressFamily::Vsock, libc::sockaddr_vsock, vsock}
+    accessors!{as_sockaddr_vm, as_sockaddr_vm_mut, VsockAddr,
+        AddressFamily::Vsock, libc::sockaddr_vm, vsock}
 }
 
 impl fmt::Debug for SockaddrStorage {
