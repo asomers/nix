@@ -801,7 +801,7 @@ impl UnixAddr {
     }
 }
 
-impl private::Sealed for UnixAddr {}
+impl private::SockaddrLikePriv for UnixAddr {}
 impl SockaddrLike for UnixAddr {
     unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
         -> Option<Self> where Self: Sized
@@ -883,13 +883,10 @@ impl Hash for UnixAddr {
 ///
 /// Most implementors also implement `AsRef<libc::XXX>` to access their
 /// inner type read-only.
-pub trait SockaddrLike: private::Sealed {
+pub trait SockaddrLike: private::SockaddrLikePriv {
+    /// Returns a raw pointer to the inner structure.  Useful for FFI.
     fn as_ptr(&self) -> *const libc::sockaddr {
         self as *const Self as *const libc::sockaddr
-    }
-
-    fn as_mut_ptr(&mut self) -> *mut libc::sockaddr {
-        self as *mut Self as *mut libc::sockaddr
     }
 
     /// Unsafe constructor from a variable length source
@@ -947,7 +944,12 @@ pub trait SockaddrLike: private::Sealed {
     }
 }
 
-impl private::Sealed for () {}
+impl private::SockaddrLikePriv for () {
+    fn as_mut_ptr(&mut self) -> *mut libc::sockaddr {
+        ptr::null_mut()
+    }
+}
+
 /// `()` can be used in place of a real Sockaddr when no address is expected,
 /// for example for a field of `Option<S> where S: SockaddrLike`.
 // If this RFC ever stabilizes, then ! will be a better choice.
@@ -955,10 +957,6 @@ impl private::Sealed for () {}
 impl SockaddrLike for () {
     fn as_ptr(&self) -> *const libc::sockaddr {
         ptr::null()
-    }
-
-    fn as_mut_ptr(&mut self) -> *mut libc::sockaddr {
-        ptr::null_mut()
     }
 
     unsafe fn from_raw(_: *const libc::sockaddr, _: Option<libc::socklen_t>)
@@ -1020,7 +1018,7 @@ impl SockaddrIn {
 }
 
 #[cfg(feature = "net")]
-impl private::Sealed for SockaddrIn {}
+impl private::SockaddrLikePriv for SockaddrIn {}
 #[cfg(feature = "net")]
 impl SockaddrLike for SockaddrIn {
     unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
@@ -1132,7 +1130,7 @@ impl SockaddrIn6 {
 }
 
 #[cfg(feature = "net")]
-impl private::Sealed for SockaddrIn6 {}
+impl private::SockaddrLikePriv for SockaddrIn6 {}
 #[cfg(feature = "net")]
 impl SockaddrLike for SockaddrIn6 {
     unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
@@ -1239,7 +1237,7 @@ pub union SockaddrStorage {
     #[cfg_attr(docsrs, doc(cfg(all())))]
     vsock: VsockAddr
 }
-impl private::Sealed for SockaddrStorage {}
+impl private::SockaddrLikePriv for SockaddrStorage {}
 impl SockaddrLike for SockaddrStorage {
     unsafe fn from_raw(addr: *const libc::sockaddr, l: Option<libc::socklen_t>)
         -> Option<Self> where Self: Sized
@@ -1494,7 +1492,19 @@ impl PartialEq for SockaddrStorage {
 }
 
 mod private {
-    pub trait Sealed {}
+    pub trait SockaddrLikePriv {
+        /// Returns a mutable raw pointer to the inner structure.
+        ///
+        /// # Safety
+        ///
+        /// This method is technically safe, but modifying the inner structure's
+        /// `family` or `len` fields may result in violating Nix's invariants.
+        /// It is best to use this method only with foreign functions that do
+        /// not change the sockaddr type.
+        fn as_mut_ptr(&mut self) -> *mut libc::sockaddr {
+            self as *mut Self as *mut libc::sockaddr
+        }
+    }
 }
 
 /// Represents a socket address
@@ -1799,7 +1809,7 @@ impl fmt::Display for SockAddr {
 #[cfg(not(target_os = "fuchsia"))]
 #[cfg(feature = "net")]
 #[allow(deprecated)]
-impl private::Sealed for SockAddr {}
+impl private::SockaddrLikePriv for SockAddr {}
 #[cfg(not(target_os = "fuchsia"))]
 #[cfg(feature = "net")]
 #[allow(deprecated)]
@@ -1842,7 +1852,7 @@ pub mod netlink {
         }
     }
 
-    impl private::Sealed for NetlinkAddr {}
+    impl private::SockaddrLikePriv for NetlinkAddr {}
     impl SockaddrLike for NetlinkAddr {
         unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
             -> Option<Self> where Self: Sized
@@ -1885,7 +1895,7 @@ pub mod alg {
     #[repr(transparent)]
     pub struct AlgAddr(pub(in super::super) sockaddr_alg);
 
-    impl private::Sealed for AlgAddr {}
+    impl private::SockaddrLikePriv for AlgAddr {}
     impl SockaddrLike for AlgAddr {
         unsafe fn from_raw(addr: *const libc::sockaddr, l: Option<libc::socklen_t>)
             -> Option<Self> where Self: Sized
@@ -1991,7 +2001,7 @@ pub mod sys_control {
     #[repr(transparent)]
     pub struct SysControlAddr(pub(in super::super) libc::sockaddr_ctl);
 
-    impl private::Sealed for SysControlAddr {}
+    impl private::SockaddrLikePriv for SysControlAddr {}
     impl SockaddrLike for SysControlAddr {
         unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
             -> Option<Self> where Self: Sized
@@ -2123,7 +2133,7 @@ mod datalink {
                 addr[5])
         }
     }
-    impl private::Sealed for LinkAddr {}
+    impl private::SockaddrLikePriv for LinkAddr {}
     impl SockaddrLike for LinkAddr {
         unsafe fn from_raw(addr: *const libc::sockaddr,
                            len: Option<libc::socklen_t>)
@@ -2246,7 +2256,7 @@ mod datalink {
             }
         }
     }
-    impl private::Sealed for LinkAddr {}
+    impl private::SockaddrLikePriv for LinkAddr {}
     impl SockaddrLike for LinkAddr {
         unsafe fn from_raw(addr: *const libc::sockaddr,
                            len: Option<libc::socklen_t>)
@@ -2286,7 +2296,7 @@ pub mod vsock {
     #[repr(transparent)]
     pub struct VsockAddr(pub(in super::super) sockaddr_vm);
 
-    impl private::Sealed for VsockAddr {}
+    impl private::SockaddrLikePriv for VsockAddr {}
     impl SockaddrLike for VsockAddr {
         unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
             -> Option<Self> where Self: Sized
