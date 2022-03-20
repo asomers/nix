@@ -1,4 +1,6 @@
-use nix::sys::socket::{AddressFamily, InetAddr,
+#[allow(deprecated)]
+use nix::sys::socket::InetAddr;
+use nix::sys::socket::{AddressFamily,
     UnixAddr, getsockname, sockaddr, sockaddr_in6};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -12,6 +14,7 @@ use libc::{c_char, sockaddr_storage};
 #[cfg(any(target_os = "linux", target_os= "android"))]
 use crate::*;
 
+#[allow(deprecated)]
 #[test]
 pub fn test_inetv4_addr_to_sock_addr() {
     let actual: net::SocketAddr = FromStr::from_str("127.0.0.1:3000").unwrap();

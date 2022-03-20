@@ -33,13 +33,14 @@ pub use self::addr::{SockaddrIn, SockaddrIn6, SockaddrLike, SockaddrStorage};
 #[allow(deprecated)]
 pub use self::addr::{
     AddressFamily,
-    InetAddr,
     SockAddr,
     UnixAddr,
 };
+#[allow(deprecated)]
 #[cfg(not(any(target_os = "illumos", target_os = "solaris")))]
 #[cfg(feature = "net")]
 pub use self::addr::{
+    InetAddr,
     IpAddr,
     Ipv4Addr,
     Ipv6Addr,
@@ -52,6 +53,7 @@ pub use self::addr::{
     SockAddr,
     UnixAddr,
 };
+#[allow(deprecated)]
 #[cfg(any(target_os = "illumos", target_os = "solaris"))]
 #[cfg(feature = "net")]
 pub use self::addr::{
