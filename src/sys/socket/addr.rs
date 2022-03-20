@@ -1343,7 +1343,7 @@ impl SockaddrStorage {
     }
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    accessors!{as_sockaddr_alg, as_sockaddr_alg_mut, AlgAddr,
+    accessors!{as_alg_addr, as_alg_addr_mut, AlgAddr,
         AddressFamily::Alg, libc::sockaddr_alg, alg}
 
     #[cfg(any(target_os = "dragonfly",
@@ -1354,7 +1354,7 @@ impl SockaddrStorage {
               target_os = "netbsd",
               target_os = "openbsd"))]
     #[cfg(feature = "net")]
-    accessors!{as_sockaddr_dl, as_sockaddr_dl_mut, LinkAddr,
+    accessors!{as_link_addr, as_link_addr_mut, LinkAddr,
         AddressFamily::Link, libc::sockaddr_dl, dl}
 
     #[cfg(feature = "net")]
@@ -1366,17 +1366,17 @@ impl SockaddrStorage {
         AddressFamily::Inet6, libc::sockaddr_in6, sin6}
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    accessors!{as_sockaddr_nl, as_sockaddr_nl_mut, NetlinkAddr,
+    accessors!{as_netlink_addr, as_netlink_addr_mut, NetlinkAddr,
         AddressFamily::Netlink, libc::sockaddr_nl, nl}
 
     #[cfg(all(feature = "ioctl", any(target_os = "ios", target_os = "macos")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "ioctl")))]
-    accessors!{as_sockaddr_ctl, as_sockaddr_ctl_mut, SysControlAddr,
+    accessors!{as_sys_control_addr, as_sys_control_addr_mut, SysControlAddr,
         AddressFamily::System, libc::sockaddr_ctl, sctl}
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
-    accessors!{as_sockaddr_vm, as_sockaddr_vm_mut, VsockAddr,
+    accessors!{as_vsock_addr, as_vsock_addr_mut, VsockAddr,
         AddressFamily::Vsock, libc::sockaddr_vm, vsock}
 }
 
@@ -2385,7 +2385,7 @@ mod tests {
             let len = Some(bytes.len() as socklen_t);
             let sock_addr = unsafe { SockaddrStorage::from_raw(sa, len) }.unwrap();
             assert_eq!(sock_addr.family(), Some(AddressFamily::Link));
-            match sock_addr.as_sockaddr_dl() {
+            match sock_addr.as_link_addr() {
                 Some(dl) => assert_eq!(dl.addr(), Some([48u8, 0, 9, 0, 0, 0])),
                 None => panic!("Can't unwrap sockaddr storage")
             }
@@ -2425,7 +2425,7 @@ mod tests {
 
             let sock_addr = unsafe { SockaddrStorage::from_raw(sa, len).unwrap() };
             assert_eq!(sock_addr.family(), Some(AddressFamily::Link));
-            match sock_addr.as_sockaddr_dl() {
+            match sock_addr.as_link_addr() {
                 Some(dl) => assert_eq!(dl.addr(),
                                        Some([24u8, 101, 144, 221, 76, 176])),
                 None => panic!("Can't unwrap sockaddr storage")
@@ -2447,7 +2447,7 @@ mod tests {
 
             assert_eq!(sock_addr.family().unwrap(), AddressFamily::Link);
 
-            assert_eq!(sock_addr.as_sockaddr_dl().unwrap().addr(),
+            assert_eq!(sock_addr.as_link_addr().unwrap().addr(),
                     Some([24u8, 101, 144, 221, 76, 176]));
         }
     }
