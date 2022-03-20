@@ -1404,7 +1404,7 @@ impl SockaddrStorage {
     }
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    accessors!{#[doc = "foo"], as_alg_addr, as_alg_addr_mut, AlgAddr,
+    accessors!{as_alg_addr, as_alg_addr_mut, AlgAddr,
         AddressFamily::Alg, libc::sockaddr_alg, alg}
 
     #[cfg(any(target_os = "dragonfly",
@@ -1430,17 +1430,17 @@ impl SockaddrStorage {
         AddressFamily::Inet6, libc::sockaddr_in6, sin6}
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    accessors!{#[doc = "foo"], as_netlink_addr, as_netlink_addr_mut, NetlinkAddr,
+    accessors!{as_netlink_addr, as_netlink_addr_mut, NetlinkAddr,
         AddressFamily::Netlink, libc::sockaddr_nl, nl}
 
     #[cfg(all(feature = "ioctl", any(target_os = "ios", target_os = "macos")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "ioctl")))]
-    accessors!{#[doc = "foo"], as_sys_control_addr, as_sys_control_addr_mut, SysControlAddr,
+    accessors!{as_sys_control_addr, as_sys_control_addr_mut, SysControlAddr,
         AddressFamily::System, libc::sockaddr_ctl, sctl}
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
-    accessors!{#[doc = "foo"], as_vsock_addr, as_vsock_addr_mut, VsockAddr,
+    accessors!{as_vsock_addr, as_vsock_addr_mut, VsockAddr,
         AddressFamily::Vsock, libc::sockaddr_vm, vsock}
 }
 
