@@ -34,6 +34,10 @@ pub use self::vsock::VsockAddr;
 
 /// These constants specify the protocol family to be used
 /// in [`socket`](fn.socket.html) and [`socketpair`](fn.socketpair.html)
+///
+/// # References
+///
+/// [address_families(7)](https://man7.org/linux/man-pages/man7/address_families.7.html)
 // Should this be u8?
 #[repr(i32)]
 #[non_exhaustive]
@@ -69,9 +73,15 @@ pub enum AddressFamily {
     Ipx = libc::AF_IPX,
     /// AppleTalk
     AppleTalk = libc::AF_APPLETALK,
+    /// AX.25 packet layer protocol.
+    /// (see [netrom(4)](https://www.unix.com/man-page/linux/4/netrom/))
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     NetRom = libc::AF_NETROM,
+    /// Can't be used for creating sockets; mostly used for bridge
+    /// links in
+    /// [rtnetlink(7)](https://man7.org/linux/man-pages/man7/rtnetlink.7.html)
+    /// protocol commands.
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Bridge = libc::AF_BRIDGE,
@@ -83,77 +93,107 @@ pub enum AddressFamily {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     X25 = libc::AF_X25,
+    /// RATS (Radio Amateur Telecommunications Society) Open
+    /// Systems environment (ROSE) AX.25 packet layer protocol.
+    /// (see [netrom(4)](https://www.unix.com/man-page/linux/4/netrom/))
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Rose = libc::AF_ROSE,
+    /// DECet protocol sockets.
     Decnet = libc::AF_DECnet,
+    /// Reserved for "802.2LLC project"; never used.
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     NetBeui = libc::AF_NETBEUI,
+    /// This was a short-lived (between Linux 2.1.30 and
+    /// 2.1.99pre2) protocol family for firewall upcalls.
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Security = libc::AF_SECURITY,
+    /// Key management protocol.
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Key = libc::AF_KEY,
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Ash = libc::AF_ASH,
+    /// Acorn Econet protocol
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Econet = libc::AF_ECONET,
+    /// Access to ATM Switched Virtual Circuits
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     AtmSvc = libc::AF_ATMSVC,
+    /// Reliable Datagram Sockets (RDS) protocol
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Rds = libc::AF_RDS,
+    /// IBM SNA
     Sna = libc::AF_SNA,
+    /// Socket interface over IrDA
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Irda = libc::AF_IRDA,
+    /// Generic PPP transport layer, for setting up L2 tunnels (L2TP and PPPoE)
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Pppox = libc::AF_PPPOX,
+    /// Legacy protocol for wide area network (WAN) connectivity that was used
+    /// by Sangoma WAN cards
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Wanpipe = libc::AF_WANPIPE,
+    /// Logical link control (IEEE 802.2 LLC) protocol
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Llc = libc::AF_LLC,
+    /// InfiniBand native addressing 
     #[cfg(all(target_os = "linux", not(target_env = "uclibc")))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Ib = libc::AF_IB,
+    /// Multiprotocol Label Switching
     #[cfg(all(target_os = "linux", not(target_env = "uclibc")))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Mpls = libc::AF_MPLS,
+    /// Controller Area Network automotive bus protocol
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Can = libc::AF_CAN,
+    /// TIPC, "cluster domain sockets" protocol
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Tipc = libc::AF_TIPC,
+    /// Bluetooth low-level socket protocol
     #[cfg(not(any(target_os = "illumos",
                   target_os = "ios",
                   target_os = "macos",
                   target_os = "solaris")))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Bluetooth = libc::AF_BLUETOOTH,
+    /// IUCV (inter-user communication vehicle) z/VM protocol for
+    /// hypervisor-guest interaction
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Iucv = libc::AF_IUCV,
+    /// Rx, Andrew File System remote procedure call protocol
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     RxRpc = libc::AF_RXRPC,
+    /// New "modular ISDN" driver interface protocol
     #[cfg(not(any(target_os = "illumos", target_os = "solaris")))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Isdn = libc::AF_ISDN,
+    /// Nokia cellular modem IPC/RPC interface
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Phonet = libc::AF_PHONET,
+    /// IEEE 802.15.4 WPAN (wireless personal area network) raw packet protocol
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Ieee802154 = libc::AF_IEEE802154,
+    /// Ericsson's Communication CPU to Application CPU interface (CAIF)
+    /// protocol.
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Caif = libc::AF_CAIF,
@@ -164,9 +204,11 @@ pub enum AddressFamily {
     #[cfg(target_os = "linux")]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Nfc = libc::AF_NFC,
+    /// VMWare VSockets protocol for hypervisor-guest interaction.
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Vsock = libc::AF_VSOCK,
+    /// ARPANet IMP addresses
     #[cfg(any(target_os = "dragonfly",
               target_os = "freebsd",
               target_os = "ios",
@@ -175,6 +217,7 @@ pub enum AddressFamily {
               target_os = "openbsd"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     ImpLink = libc::AF_IMPLINK,
+    /// PUP protocols, e.g. BSP
     #[cfg(any(target_os = "dragonfly",
               target_os = "freebsd",
               target_os = "ios",
@@ -183,6 +226,7 @@ pub enum AddressFamily {
               target_os = "openbsd"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Pup = libc::AF_PUP,
+    /// MIT CHAOS protocols
     #[cfg(any(target_os = "dragonfly",
               target_os = "freebsd",
               target_os = "ios",
@@ -197,6 +241,7 @@ pub enum AddressFamily {
               target_os = "openbsd"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Ns = libc::AF_NS,
+    #[allow(missing_docs)]  // Not documented anywhere that I can find
     #[cfg(any(target_os = "dragonfly",
               target_os = "freebsd",
               target_os = "ios",
@@ -205,6 +250,7 @@ pub enum AddressFamily {
               target_os = "openbsd"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Iso = libc::AF_ISO,
+    /// Bell Labs virtual circuit switch ?
     #[cfg(any(target_os = "dragonfly",
               target_os = "freebsd",
               target_os = "ios",
@@ -213,6 +259,7 @@ pub enum AddressFamily {
               target_os = "openbsd"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Datakit = libc::AF_DATAKIT,
+    /// CCITT protocols, X.25 etc
     #[cfg(any(target_os = "dragonfly",
               target_os = "freebsd",
               target_os = "ios",
@@ -221,6 +268,7 @@ pub enum AddressFamily {
               target_os = "openbsd"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Ccitt = libc::AF_CCITT,
+    /// DEC Direct data link interface
     #[cfg(any(target_os = "dragonfly",
               target_os = "freebsd",
               target_os = "ios",
@@ -229,6 +277,7 @@ pub enum AddressFamily {
               target_os = "openbsd"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Dli = libc::AF_DLI,
+    #[allow(missing_docs)]  // Not documented anywhere that I can find
     #[cfg(any(target_os = "dragonfly",
               target_os = "freebsd",
               target_os = "ios",
@@ -237,6 +286,7 @@ pub enum AddressFamily {
               target_os = "openbsd"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Lat = libc::AF_LAT,
+    /// NSC Hyperchannel
     #[cfg(any(target_os = "dragonfly",
               target_os = "freebsd",
               target_os = "ios",
@@ -245,6 +295,7 @@ pub enum AddressFamily {
               target_os = "openbsd"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Hylink = libc::AF_HYLINK,
+    /// Link layer interface
     #[cfg(any(target_os = "dragonfly",
               target_os = "freebsd",
               target_os = "ios",
@@ -254,6 +305,7 @@ pub enum AddressFamily {
               target_os = "openbsd"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Link = libc::AF_LINK,
+    /// connection-oriented IP, aka ST II
     #[cfg(any(target_os = "dragonfly",
               target_os = "freebsd",
               target_os = "ios",
@@ -262,6 +314,7 @@ pub enum AddressFamily {
               target_os = "openbsd"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Coip = libc::AF_COIP,
+    /// Computer Network Technology
     #[cfg(any(target_os = "dragonfly",
               target_os = "freebsd",
               target_os = "ios",
@@ -270,6 +323,7 @@ pub enum AddressFamily {
               target_os = "openbsd"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Cnt = libc::AF_CNT,
+    /// Native ATM access
     #[cfg(any(target_os = "dragonfly",
               target_os = "freebsd",
               target_os = "ios",
@@ -1084,6 +1138,7 @@ impl std::str::FromStr for SockaddrIn {
     }
 }
 
+/// An IPv6 socket address
 #[cfg(feature = "net")]
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -1302,7 +1357,6 @@ impl SockaddrLike for SockaddrStorage {
 
 macro_rules! accessors {
     (
-        //#![$meta:meta],
         $fname:ident,
         $fname_mut:ident,
         $sockty:ty,
@@ -1310,7 +1364,7 @@ macro_rules! accessors {
         $libc_ty:ty,
         $field:ident) =>
     {
-        //#[cfg($meta)]
+        /// Safely and falliably downcast to an immutable reference
         pub fn $fname(&self) -> Option<&$sockty> {
             if self.family() == Some($family) &&
               self.len() >= mem::size_of::<$libc_ty>() as libc::socklen_t
@@ -1322,6 +1376,7 @@ macro_rules! accessors {
             }
         }
 
+        /// Safely and falliably downcast to a mutable reference
         pub fn $fname_mut(&mut self) -> Option<&mut $sockty> {
             if self.family() == Some($family) &&
               self.len() >= mem::size_of::<$libc_ty>() as libc::socklen_t
@@ -1342,7 +1397,7 @@ impl SockaddrStorage {
     }
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    accessors!{as_alg_addr, as_alg_addr_mut, AlgAddr,
+    accessors!{#[doc = "foo"], as_alg_addr, as_alg_addr_mut, AlgAddr,
         AddressFamily::Alg, libc::sockaddr_alg, alg}
 
     #[cfg(any(target_os = "dragonfly",
@@ -1353,29 +1408,32 @@ impl SockaddrStorage {
               target_os = "netbsd",
               target_os = "openbsd"))]
     #[cfg(feature = "net")]
-    accessors!{as_link_addr, as_link_addr_mut, LinkAddr,
+    accessors!{
+        as_link_addr, as_link_addr_mut, LinkAddr,
         AddressFamily::Link, libc::sockaddr_dl, dl}
 
     #[cfg(feature = "net")]
-    accessors!{as_sockaddr_in, as_sockaddr_in_mut, SockaddrIn,
+    accessors!{
+        as_sockaddr_in, as_sockaddr_in_mut, SockaddrIn,
         AddressFamily::Inet, libc::sockaddr_in, sin}
 
     #[cfg(feature = "net")]
-    accessors!{as_sockaddr_in6, as_sockaddr_in6_mut, SockaddrIn6,
+    accessors!{
+        as_sockaddr_in6, as_sockaddr_in6_mut, SockaddrIn6,
         AddressFamily::Inet6, libc::sockaddr_in6, sin6}
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    accessors!{as_netlink_addr, as_netlink_addr_mut, NetlinkAddr,
+    accessors!{#[doc = "foo"], as_netlink_addr, as_netlink_addr_mut, NetlinkAddr,
         AddressFamily::Netlink, libc::sockaddr_nl, nl}
 
     #[cfg(all(feature = "ioctl", any(target_os = "ios", target_os = "macos")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "ioctl")))]
-    accessors!{as_sys_control_addr, as_sys_control_addr_mut, SysControlAddr,
+    accessors!{#[doc = "foo"], as_sys_control_addr, as_sys_control_addr_mut, SysControlAddr,
         AddressFamily::System, libc::sockaddr_ctl, sctl}
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
-    accessors!{as_vsock_addr, as_vsock_addr_mut, VsockAddr,
+    accessors!{#[doc = "foo"], as_vsock_addr, as_vsock_addr_mut, VsockAddr,
         AddressFamily::Vsock, libc::sockaddr_vm, vsock}
 }
 
@@ -1514,6 +1572,7 @@ mod private {
     since = "0.24.0",
     note = "use SockaddrLike or SockaddrStorage instead"
 )]
+#[allow(missing_docs)]  // Since they're all deprecated anyway
 #[non_exhaustive]
 pub enum SockAddr {
     #[cfg(feature = "net")]
@@ -1547,6 +1606,7 @@ pub enum SockAddr {
     Vsock(VsockAddr),
 }
 
+#[allow(missing_docs)]  // Since they're all deprecated anyway
 #[allow(deprecated)]
 impl SockAddr {
     feature! {
@@ -1830,11 +1890,18 @@ pub mod netlink {
     use std::{fmt, mem};
     use super::*;
 
+    /// Address for the Linux kernel user interface device.
+    ///
+    /// # References
+    ///
+    /// [netlink(7)](https://man7.org/linux/man-pages/man7/netlink.7.html)
     #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
     #[repr(transparent)]
     pub struct NetlinkAddr(pub(in super::super) sockaddr_nl);
 
     impl NetlinkAddr {
+        /// Construct a new socket address from its port ID and multicast groups
+        /// mask.
         pub fn new(pid: u32, groups: u32) -> NetlinkAddr {
             let mut addr: sockaddr_nl = unsafe { mem::zeroed() };
             addr.nl_family = AddressFamily::Netlink as sa_family_t;
@@ -1844,10 +1911,12 @@ pub mod netlink {
             NetlinkAddr(addr)
         }
 
+        /// Return the socket's port ID.
         pub const fn pid(&self) -> u32 {
             self.0.nl_pid
         }
 
+        /// Return the socket's multicast groups mask
         pub const fn groups(&self) -> u32 {
             self.0.nl_groups
         }
@@ -1892,6 +1961,7 @@ pub mod alg {
     use std::ffi::CStr;
     use super::*;
 
+    /// Socket address for the Linux kernel crypto API
     #[derive(Copy, Clone)]
     #[repr(transparent)]
     pub struct AlgAddr(pub(in super::super) sockaddr_alg);
@@ -1938,6 +2008,7 @@ pub mod alg {
     }
 
     impl AlgAddr {
+        /// Construct an `AF_ALG` socket from its cipher name and type.
         pub fn new(alg_type: &str, alg_name: &str) -> AlgAddr {
             let mut addr: sockaddr_alg = unsafe { mem::zeroed() };
             addr.salg_family = AF_ALG as u16;
@@ -1948,10 +2019,12 @@ pub mod alg {
         }
 
 
+        /// Return the socket's cipher type, for example `hash` or `aead`.
         pub fn alg_type(&self) -> &CStr {
             unsafe { CStr::from_ptr(self.0.salg_type.as_ptr() as *const c_char) }
         }
 
+        /// Return the socket's cipher name, for example `sha1`.
         pub fn alg_name(&self) -> &CStr {
             unsafe { CStr::from_ptr(self.0.salg_name.as_ptr() as *const c_char) }
         }
@@ -2197,7 +2270,7 @@ mod datalink {
             self.0.sdl_type
         }
 
-        // MAC address start position
+        /// MAC address start position
         pub fn nlen(&self) -> usize {
             self.0.sdl_nlen as usize
         }
@@ -2293,6 +2366,11 @@ pub mod vsock {
     use std::hash::{Hash, Hasher};
     use super::*;
 
+    /// Socket address for VMWare VSockets protocol
+    ///
+    /// # References
+    ///
+    /// [vsock(7)](https://man7.org/linux/man-pages/man7/vsock.7.html)
     #[derive(Copy, Clone)]
     #[repr(transparent)]
     pub struct VsockAddr(pub(in super::super) sockaddr_vm);
@@ -2342,6 +2420,7 @@ pub mod vsock {
     /// The address for AF_VSOCK socket is defined as a combination of a
     /// 32-bit Context Identifier (CID) and a 32-bit port number.
     impl VsockAddr {
+        /// Construct a `VsockAddr` from its raw fields.
         pub fn new(cid: u32, port: u32) -> VsockAddr {
             let mut addr: sockaddr_vm = unsafe { mem::zeroed() };
             addr.svm_family = AddressFamily::Vsock as sa_family_t;

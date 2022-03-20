@@ -17,6 +17,7 @@ use crate::sys::{
     uio::IoVec
 };
 
+#[warn(missing_docs)]
 mod addr;
 #[deny(missing_docs)]
 pub mod sockopt;
