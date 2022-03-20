@@ -901,9 +901,10 @@ pub trait SockaddrLike: private::SockaddrLikePriv {
     unsafe fn from_raw(addr: *const libc::sockaddr, len: Option<libc::socklen_t>)
         -> Option<Self> where Self: Sized;
 
+    /// Return the address family of this socket
     fn family(&self) -> Option<AddressFamily> {
         // Safe since all implementors have a sa_family field at the same
-        // address, and they're all repr(transparent)
+        // address, and they're all repr(C)
         AddressFamily::from_i32(
             unsafe {
                 (*(self as *const Self as *const libc::sockaddr)).sa_family as i32
@@ -1198,9 +1199,9 @@ impl std::str::FromStr for SockaddrIn6 {
 /// A container for any sockaddr type
 ///
 /// Just like C's `sockaddr_storage`, this type is large enough to hold any type
-/// of sockaddr.  It can be used as an argument with functions like [`bind`] and
-/// [`gethostname`].  Though it is a union, it can be safely accessed through
-/// the `as_*` methods.
+/// of sockaddr.  It can be used as an argument with functions like
+/// [`bind`](super::bind) and [`getsockname`](super::getsockname).  Though it is
+/// a union, it can be safely accessed through the `as_*` methods.
 ///
 /// # Example
 /// ```
