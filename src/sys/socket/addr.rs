@@ -114,6 +114,7 @@ pub enum AddressFamily {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Key = libc::AF_KEY,
+    #[allow(missing_docs)]  // Not documented anywhere that I can find
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Ash = libc::AF_ASH,
@@ -201,6 +202,7 @@ pub enum AddressFamily {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Alg = libc::AF_ALG,
+    /// Near field communication
     #[cfg(target_os = "linux")]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Nfc = libc::AF_NFC,
@@ -235,6 +237,7 @@ pub enum AddressFamily {
               target_os = "openbsd"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     Chaos = libc::AF_CHAOS,
+    /// Novell and Xerox protocol
     #[cfg(any(target_os = "ios",
               target_os = "macos",
               target_os = "netbsd",
@@ -384,6 +387,7 @@ pub enum InetAddr {
     V6(libc::sockaddr_in6),
 }
 
+#[allow(missing_docs)]  // It's deprecated anyway
 #[allow(deprecated)]
 impl InetAddr {
     #[allow(clippy::needless_update)]   // It isn't needless on all OSes
@@ -493,12 +497,14 @@ impl fmt::Display for InetAddr {
  * ===== IpAddr =====
  *
  */
+#[allow(missing_docs)]  // https://github.com/nix-rust/nix/issues/1681
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum IpAddr {
     V4(Ipv4Addr),
     V6(Ipv6Addr),
 }
 
+#[allow(missing_docs)]  // https://github.com/nix-rust/nix/issues/1681
 impl IpAddr {
     /// Create a new IpAddr that contains an IPv4 address.
     ///
@@ -546,10 +552,12 @@ impl fmt::Display for IpAddr {
  *
  */
 
+#[allow(missing_docs)]  // https://github.com/nix-rust/nix/issues/1681
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[repr(transparent)]
 pub struct Ipv4Addr(pub libc::in_addr);
 
+#[allow(missing_docs)]  // https://github.com/nix-rust/nix/issues/1681
 impl Ipv4Addr {
     #[allow(clippy::identity_op)]   // More readable this way
     pub const fn new(a: u8, b: u8, c: u8, d: u8) -> Ipv4Addr {
@@ -596,6 +604,7 @@ impl fmt::Display for Ipv4Addr {
  *
  */
 
+#[allow(missing_docs)]  // https://github.com/nix-rust/nix/issues/1681
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[repr(transparent)]
 pub struct Ipv6Addr(pub libc::in6_addr);
@@ -616,6 +625,7 @@ macro_rules! to_u16_array {
     }
 }
 
+#[allow(missing_docs)]  // https://github.com/nix-rust/nix/issues/1681
 impl Ipv6Addr {
     #[allow(clippy::many_single_char_names)]
     #[allow(clippy::too_many_arguments)]
@@ -2079,6 +2089,11 @@ pub mod sys_control {
 
     ioctl_readwrite!(ctl_info, CTL_IOC_MAGIC, CTL_IOC_INFO, ctl_ioc_info);
 
+    /// Apple system control socket
+    ///
+    /// # References
+    ///
+    /// https://developer.apple.com/documentation/kernel/sockaddr_ctl
     #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
     #[repr(transparent)]
     pub struct SysControlAddr(pub(in super::super) libc::sockaddr_ctl);
@@ -2107,6 +2122,8 @@ pub mod sys_control {
     }
 
     impl SysControlAddr {
+        /// Construct a new `SysControlAddr` from its kernel unique identifier
+        /// and unit number.
         pub const fn new(id: u32, unit: u32) -> SysControlAddr {
             let addr = libc::sockaddr_ctl {
                 sc_len: mem::size_of::<libc::sockaddr_ctl>() as c_uchar,
@@ -2120,6 +2137,8 @@ pub mod sys_control {
             SysControlAddr(addr)
         }
 
+        /// Construct a new `SysControlAddr` from its human readable name and
+        /// unit number.
         pub fn from_name(sockfd: RawFd, name: &str, unit: u32) -> Result<SysControlAddr> {
             if name.len() > MAX_KCTL_NAME {
                 return Err(Errno::ENAMETOOLONG);
@@ -2134,10 +2153,12 @@ pub mod sys_control {
             Ok(SysControlAddr::new(info.ctl_id, unit))
         }
 
+        /// Return the kernel unique identifier
         pub const fn id(&self) -> u32 {
             self.0.sc_id
         }
 
+        /// Return the kernel controller private unit number.
         pub const fn unit(&self) -> u32 {
             self.0.sc_unit
         }
